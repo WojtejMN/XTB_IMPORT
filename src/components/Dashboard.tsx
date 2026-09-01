@@ -2,13 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { analyzePortfolio } from "@/lib/analysis/portfolio";
-import { parseAmount } from "@/lib/xtb/values";
+import { stampAccountKind } from "@/lib/xtb/account";
+import { mergeParsedFiles } from "@/lib/xtb/merge";
 import { parseXtbFile } from "@/lib/xtb/parse";
-import { sampleXtbHistory } from "@/lib/xtb/sample";
-import type { ParsedXtbFile } from "@/lib/xtb/types";
+import { sampleAccounts } from "@/lib/xtb/sample";
+import { parseAmount } from "@/lib/xtb/values";
+import type { AccountKind, ParsedXtbFile } from "@/lib/xtb/types";
+import { AccountTabs } from "./AccountTabs";
 import { ExportGuide } from "./ExportGuide";
 import { FileDropzone } from "./FileDropzone";
+import { ImportedFiles } from "./ImportedFiles";
 import { MetricCards } from "./MetricCards";
+import { OperationSummary } from "./OperationSummary";
 import { PortfolioChart } from "./PortfolioChart";
 
 const trustPoints = [
@@ -18,46 +23,61 @@ const trustPoints = [
 ];
 
 export function Dashboard() {
-  const [parsed, setParsed] = useState<ParsedXtbFile | null>(null);
+  const [imports, setImports] = useState<ParsedXtbFile[]>([]);
+  const [selected, setSelected] = useState<AccountKind[]>(["standard", "ike", "ikze"]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [currentValue, setCurrentValue] = useState("");
 
+  const available = useMemo(
+    () => [...new Set(imports.map((file) => file.accountKind))],
+    [imports],
+  );
+  const activeSelection = selected.filter((kind) => available.includes(kind));
+  const merged = useMemo(
+    () => (imports.length > 0 ? mergeParsedFiles(imports, activeSelection) : null),
+    [imports, activeSelection],
+  );
   const currentAccountValue = parseAmount(currentValue) ?? undefined;
   const report = useMemo(
     () =>
-      parsed
-        ? analyzePortfolio(parsed, {
+      merged && (merged.cashOperations.length > 0 || merged.closedPositions.length > 0)
+        ? analyzePortfolio(merged, {
             currentAccountValue:
               currentAccountValue != null && currentAccountValue >= 0
                 ? currentAccountValue
                 : undefined,
+            treatTransfersAsExternal: activeSelection.length === 1,
           })
         : null,
-    [parsed, currentAccountValue],
+    [merged, currentAccountValue, activeSelection.length],
   );
 
   useEffect(() => {
-    if (!parsed) {
+    if (imports.length === 0) {
       return;
     }
     document.getElementById("wyniki")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [parsed]);
+  }, [imports]);
 
-  async function handleFile(file: File) {
+  async function handleFiles(files: File[]) {
     setBusy(true);
     setError(null);
     try {
-      const next = await parseXtbFile(file);
-      if (next.cashOperations.length === 0 && next.closedPositions.length === 0) {
-        setParsed(null);
-        setError("Nie znaleziono transakcji XTB w tym pliku. Sprawdź, czy to eksport z xStation.");
+      const parsed = await Promise.all(files.map((file) => parseXtbFile(file)));
+      const accepted = parsed.filter(
+        (file) => file.cashOperations.length > 0 || file.closedPositions.length > 0,
+      );
+      const rejected = files.length - accepted.length;
+      if (accepted.length === 0) {
+        setError("Nie znaleziono transakcji XTB w tych plikach. Sprawdź, czy to eksport z xStation.");
         return;
       }
-      setParsed(next);
-      setCurrentValue("");
+      setImports((current) => [...current, ...accepted]);
+      if (rejected > 0) {
+        setError(`Pominięto ${rejected} plik(i) bez rozpoznanej historii XTB.`);
+      }
     } catch {
-      setParsed(null);
       setError("Nie udało się odczytać pliku. Spróbuj XLSX albo CSV z xStation.");
     } finally {
       setBusy(false);
@@ -79,8 +99,8 @@ export function Dashboard() {
               Sprawdź swoje wyniki. Spokojnie i przejrzyście.
             </h1>
             <p className="mt-4 text-base leading-7 text-muted sm:text-lg">
-              Wgraj eksport z xStation. Policzysz sumę wpłat, wyprodukowany zysk oraz łączną i
-              roczną stopę zwrotu — bez logowania, w kilka chwil.
+              Wgraj eksporty z xStation — zwykły, IKE i IKZE możesz dodać razem. Policzysz sumę wpłat,
+              zysk oraz stopy zwrotu, bez logowania.
             </p>
             <ul className="mt-6 flex flex-wrap gap-2">
               {trustPoints.map((point) => (
@@ -94,7 +114,25 @@ export function Dashboard() {
             </ul>
           </div>
 
-          <FileDropzone onFile={handleFile} disabled={busy} />
+          <FileDropzone onFiles={handleFiles} disabled={busy} />
+          <ImportedFiles
+            files={imports}
+            onChangeKind={(index, kind) => {
+              setImports((current) =>
+                current.map((file, fileIndex) =>
+                  fileIndex === index ? stampAccountKind(file, kind) : file,
+                ),
+              );
+            }}
+            onRemove={(index) => {
+              setImports((current) => current.filter((_, fileIndex) => fileIndex !== index));
+            }}
+            onClear={() => {
+              setImports([]);
+              setError(null);
+              setCurrentValue("");
+            }}
+          />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <button
@@ -103,18 +141,19 @@ export function Dashboard() {
               onClick={() => {
                 setError(null);
                 setCurrentValue("");
-                setParsed(sampleXtbHistory());
+                setSelected(["standard", "ike", "ikze"]);
+                setImports(sampleAccounts());
               }}
             >
               Pokaż przykładowe dane
             </button>
-            {parsed ? (
+            {imports.length > 0 ? (
               <p className="text-sm text-muted">
-                {parsed.sourceName} · {parsed.cashOperations.length} operacji kasowych ·{" "}
-                {parsed.closedPositions.length} zamkniętych pozycji
+                {imports.length} plik(i) · {merged?.cashOperations.length ?? 0} operacji kasowych ·{" "}
+                {merged?.closedPositions.length ?? 0} zamkniętych pozycji
               </p>
             ) : (
-              <p className="text-sm text-muted">Nie masz pliku pod ręką? Najpierw zobacz, jak wygląda raport.</p>
+              <p className="text-sm text-muted">Nie masz plików pod ręką? Najpierw zobacz, jak wygląda raport.</p>
             )}
           </div>
 
@@ -130,9 +169,18 @@ export function Dashboard() {
 
       {report ? (
         <section
-            id="wyniki"
-            className="scroll-mt-28 mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8"
-          >
+          id="wyniki"
+          className="scroll-mt-28 mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8"
+        >
+          <AccountTabs selected={activeSelection} available={available} onChange={setSelected} />
+          <OperationSummary counts={report.kindCounts} />
+
+          {activeSelection.length === 0 ? (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              Zaznacz przynajmniej jedno konto, aby zobaczyć wykres.
+            </p>
+          ) : null}
+
           {report.warnings.length > 0 ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
               {report.warnings.map((warning) => (
@@ -141,10 +189,10 @@ export function Dashboard() {
             </div>
           ) : null}
 
-          <PortfolioChart data={report.chart} />
+          {activeSelection.length > 0 ? <PortfolioChart data={report.chart} /> : null}
 
           <label className="flex max-w-md flex-col gap-2 text-sm text-muted">
-            Aktualna wartość konta (opcjonalnie)
+            Aktualna wartość zaznaczonych kont (opcjonalnie)
             <input
               type="text"
               inputMode="decimal"
@@ -156,7 +204,7 @@ export function Dashboard() {
             <span>Jeśli podasz saldo z xStation, zysk i XIRR uwzględnią otwarte pozycje.</span>
           </label>
 
-          <MetricCards report={report} />
+          {activeSelection.length > 0 ? <MetricCards report={report} /> : null}
           <ExportGuide />
         </section>
       ) : null}

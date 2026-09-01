@@ -1,3 +1,4 @@
+import { detectAccountKind, previewFromRows, stampAccountKind } from "./account";
 import { classifyCashType, isIgnorableRow } from "./classify";
 import {
   findHeader,
@@ -6,7 +7,7 @@ import {
   isTradeHeader,
   type ColumnMap,
 } from "./headers";
-import type { CashOperation, ClosedPosition, ParsedXtbFile } from "./types";
+import type { AccountKind, CashOperation, ClosedPosition, ParsedXtbFile } from "./types";
 import { cellText, parseAmount, parseDate } from "./values";
 
 function decodeText(buffer: ArrayBuffer): string {
@@ -58,7 +59,12 @@ function splitCsvLine(line: string, delimiter: string): string[] {
   return cells;
 }
 
-function parseCashRows(rows: unknown[][], map: ColumnMap, startIndex: number): CashOperation[] {
+function parseCashRows(
+  rows: unknown[][],
+  map: ColumnMap,
+  startIndex: number,
+  accountKind: AccountKind,
+): CashOperation[] {
   const operations: CashOperation[] = [];
 
   for (let index = startIndex; index < rows.length; index += 1) {
@@ -82,13 +88,19 @@ function parseCashRows(rows: unknown[][], map: ColumnMap, startIndex: number): C
       comment: cellText(getCell(row, map, "comment")),
       symbol: cellText(getCell(row, map, "symbol")),
       amount,
+      accountKind,
     });
   }
 
   return operations;
 }
 
-function parseTradeRows(rows: unknown[][], map: ColumnMap, startIndex: number): ClosedPosition[] {
+function parseTradeRows(
+  rows: unknown[][],
+  map: ColumnMap,
+  startIndex: number,
+  accountKind: AccountKind,
+): ClosedPosition[] {
   const positions: ClosedPosition[] = [];
 
   for (let index = startIndex; index < rows.length; index += 1) {
@@ -129,6 +141,7 @@ function parseTradeRows(rows: unknown[][], map: ColumnMap, startIndex: number): 
       grossProfit: grossProfit ?? netProfit - commission - swap - rollover,
       netProfit,
       comment: cellText(getCell(row, map, "comment")),
+      accountKind,
     });
   }
 
@@ -139,15 +152,16 @@ export function parseTableRows(
   rows: unknown[][],
   sourceName: string,
   warnings: string[] = [],
+  accountKind: AccountKind = "standard",
 ): Pick<ParsedXtbFile, "cashOperations" | "closedPositions"> {
   const cashHeader = findHeader(rows, isCashHeader);
   const tradeHeader = findHeader(rows, isTradeHeader);
 
   const cashOperations = cashHeader
-    ? parseCashRows(rows, cashHeader.map, cashHeader.index + 1)
+    ? parseCashRows(rows, cashHeader.map, cashHeader.index + 1, accountKind)
     : [];
   const closedPositions = tradeHeader
-    ? parseTradeRows(rows, tradeHeader.map, tradeHeader.index + 1)
+    ? parseTradeRows(rows, tradeHeader.map, tradeHeader.index + 1, accountKind)
     : [];
 
   if (!cashHeader && !tradeHeader) {
@@ -164,13 +178,17 @@ export function parseCsvText(text: string, sourceName = "import.csv"): ParsedXtb
     .split(/\r?\n/)
     .filter((line) => line.trim().length > 0)
     .map((line) => splitCsvLine(line, delimiter));
-
-  const parsed = parseTableRows(rows, sourceName, warnings);
-  return {
-    sourceName,
-    warnings,
-    ...parsed,
-  };
+  const accountKind = detectAccountKind(sourceName, previewFromRows(rows));
+  const parsed = parseTableRows(rows, sourceName, warnings, accountKind);
+  return stampAccountKind(
+    {
+      sourceName,
+      accountKind,
+      warnings,
+      ...parsed,
+    },
+    accountKind,
+  );
 }
 
 export function parseCsvBuffer(buffer: ArrayBuffer, sourceName: string): ParsedXtbFile {

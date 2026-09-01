@@ -1,12 +1,19 @@
+export type AccountKind = "standard" | "ike" | "ikze";
+
 export type CashKind =
   | "deposit"
   | "withdrawal"
+  | "transfer"
+  | "purchase"
+  | "sale"
   | "dividend"
+  | "stock_split"
   | "withholding_tax"
   | "interest"
   | "interest_tax"
   | "commission"
   | "swap"
+  | "profit_loss"
   | "other";
 
 export type CashOperation = {
@@ -17,6 +24,7 @@ export type CashOperation = {
   comment: string;
   symbol: string;
   amount: number;
+  accountKind: AccountKind;
 };
 
 export type ClosedPosition = {
@@ -32,10 +40,12 @@ export type ClosedPosition = {
   grossProfit: number;
   netProfit: number;
   comment: string;
+  accountKind: AccountKind;
 };
 
 export type ParsedXtbFile = {
   sourceName: string;
+  accountKind: AccountKind;
   cashOperations: CashOperation[];
   closedPositions: ClosedPosition[];
   warnings: string[];
@@ -50,7 +60,10 @@ export type ChartPoint = {
 
 export type AnalyzeOptions = {
   currentAccountValue?: number;
+  treatTransfersAsExternal?: boolean;
 };
+
+export type KindCounts = Partial<Record<CashKind, number>>;
 
 export type PortfolioReport = {
   currency: string;
@@ -68,4 +81,6 @@ export type PortfolioReport = {
   warnings: string[];
   cashCount: number;
   tradeCount: number;
+  kindCounts: KindCounts;
+  selectedAccounts: AccountKind[];
 };

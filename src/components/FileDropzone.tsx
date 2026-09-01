@@ -3,13 +3,23 @@
 import { useId, useState } from "react";
 
 type FileDropzoneProps = {
-  onFile: (file: File) => void;
+  onFiles: (files: File[]) => void;
   disabled?: boolean;
 };
 
-export function FileDropzone({ onFile, disabled }: FileDropzoneProps) {
+export function FileDropzone({ onFiles, disabled }: FileDropzoneProps) {
   const inputId = useId();
   const [isDragging, setIsDragging] = useState(false);
+
+  function takeFiles(list: FileList | null) {
+    if (!list || disabled) {
+      return;
+    }
+    const files = Array.from(list);
+    if (files.length > 0) {
+      onFiles(files);
+    }
+  }
 
   return (
     <label
@@ -24,10 +34,7 @@ export function FileDropzone({ onFile, disabled }: FileDropzoneProps) {
       onDrop={(event) => {
         event.preventDefault();
         setIsDragging(false);
-        const file = event.dataTransfer.files[0];
-        if (file && !disabled) {
-          onFile(file);
-        }
+        takeFiles(event.dataTransfer.files);
       }}
       className={`flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed px-6 py-12 text-center shadow-[0_18px_40px_-28px_rgba(26,111,181,0.55)] transition ${
         isDragging
@@ -38,14 +45,12 @@ export function FileDropzone({ onFile, disabled }: FileDropzoneProps) {
       <input
         id={inputId}
         type="file"
+        multiple
         accept=".xlsx,.xlsm,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
         className="sr-only"
         disabled={disabled}
         onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) {
-            onFile(file);
-          }
+          takeFiles(event.target.files);
           event.target.value = "";
         }}
       />
@@ -56,11 +61,11 @@ export function FileDropzone({ onFile, disabled }: FileDropzoneProps) {
         </svg>
       </span>
       <span className="mt-4 text-base font-semibold text-foreground">
-        Upuść eksport XTB albo kliknij, aby wybrać plik
+        Upuść jeden lub kilka eksportów XTB
       </span>
-      <span className="mt-2 max-w-md text-sm leading-6 text-muted">
-        XLSX z xStation (Historia konta) albo CSV operacji kasowych i zamkniętych pozycji. Plik
-        zostaje wyłącznie w tej przeglądarce.
+      <span className="mt-2 max-w-lg text-sm leading-6 text-muted">
+        Możesz wgrać naraz historię portfela zwykłego, IKE i IKZE (XLSX lub CSV). Pliki zostają
+        wyłącznie w przeglądarce. Typ konta rozpoznamy z nazwy — możesz go potem poprawić.
       </span>
     </label>
   );

@@ -1,7 +1,8 @@
 import { unzipSync } from "fflate";
 import { XMLParser } from "fast-xml-parser";
+import { detectAccountKind, previewFromRows, stampAccountKind } from "./account";
 import { parseTableRows } from "./parse-table";
-import type { ParsedXtbFile } from "./types";
+import type { ClosedPosition, CashOperation, ParsedXtbFile } from "./types";
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -151,15 +152,12 @@ function workbookSheets(
 export function parseXlsxBuffer(buffer: ArrayBuffer, sourceName: string): ParsedXtbFile {
   const files = unzipSync(new Uint8Array(buffer));
   const warnings: string[] = [];
-  const parsed: ParsedXtbFile = {
-    sourceName,
-    cashOperations: [],
-    closedPositions: [],
-    warnings,
-  };
+  let preview = sourceName;
 
   const sharedStrings = parseSharedStrings(decode(files, "xl/sharedStrings.xml"));
   const sheets = workbookSheets(files);
+  const cashOperations: CashOperation[] = [];
+  const closedPositions: ClosedPosition[] = [];
 
   for (const sheet of sheets) {
     const xml = decode(files, sheet.path);
@@ -167,14 +165,34 @@ export function parseXlsxBuffer(buffer: ArrayBuffer, sourceName: string): Parsed
       continue;
     }
     const rows = parseSheetRows(xml, sharedStrings);
-    const table = parseTableRows(rows, `${sourceName} / ${sheet.name}`, warnings);
-    parsed.cashOperations.push(...table.cashOperations);
-    parsed.closedPositions.push(...table.closedPositions);
+    preview += ` ${sheet.name} ${previewFromRows(rows)}`;
   }
 
-  if (parsed.cashOperations.length === 0 && parsed.closedPositions.length === 0) {
+  const accountKind = detectAccountKind(sourceName, preview);
+
+  for (const sheet of sheets) {
+    const xml = decode(files, sheet.path);
+    if (!xml) {
+      continue;
+    }
+    const rows = parseSheetRows(xml, sharedStrings);
+    const table = parseTableRows(rows, `${sourceName} / ${sheet.name}`, warnings, accountKind);
+    cashOperations.push(...table.cashOperations);
+    closedPositions.push(...table.closedPositions);
+  }
+
+  if (cashOperations.length === 0 && closedPositions.length === 0) {
     warnings.push("Plik XLSX nie zawiera rozpoznawalnej historii XTB.");
   }
 
-  return parsed;
+  return stampAccountKind(
+    {
+      sourceName,
+      accountKind,
+      cashOperations,
+      closedPositions,
+      warnings,
+    },
+    accountKind,
+  );
 }

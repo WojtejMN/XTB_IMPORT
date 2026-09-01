@@ -17,11 +17,7 @@ export function ExportGuide() {
           <code className="rounded bg-primary-soft px-1 text-foreground">CASH OPERATION HISTORY</code> oraz{" "}
           <code className="rounded bg-primary-soft px-1 text-foreground">CLOSED POSITION HISTORY</code>.
         </li>
-        <li>
-          Możesz też wgrać samo CSV operacji kasowych albo zamkniętych pozycji (separator{" "}
-          <code className="rounded bg-primary-soft px-1">;</code> lub{" "}
-          <code className="rounded bg-primary-soft px-1">,</code>).
-        </li>
+        <li>Możesz wgrać kilka plików naraz — np. osobny eksport dla portfela zwykłego, IKE i IKZE.</li>
       </ol>
     </details>
   );

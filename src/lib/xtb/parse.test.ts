@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { classifyCashType, isIgnorableRow } from "./classify";
 import { parseCsvText } from "./parse-table";
 import { SAMPLE_CASH_CSV, SAMPLE_TRADES_CSV } from "./sample";
+import { detectAccountKind } from "./account";
 
 describe("classifyCashType", () => {
   it("rozpoznaje wpłaty i wypłaty z sufiksami", () => {
@@ -19,9 +20,28 @@ describe("classifyCashType", () => {
     expect(classifyCashType("Free-funds Interest Tax 2024-01")).toBe("interest_tax");
   });
 
+  it("rozpoznaje transfery, kupna, sprzedaży i splity", () => {
+    expect(classifyCashType("transfer")).toBe("transfer");
+    expect(classifyCashType("Stocks/ETF purchase")).toBe("purchase");
+    expect(classifyCashType("Stocks/ETF sale")).toBe("sale");
+    expect(classifyCashType("Kupno akcji")).toBe("purchase");
+    expect(classifyCashType("Sprzedaż akcji")).toBe("sale");
+    expect(classifyCashType("Stock split")).toBe("stock_split");
+    expect(classifyCashType("Równoważenie akcji")).toBe("stock_split");
+    expect(classifyCashType("spin off")).toBe("dividend");
+  });
+
   it("pomija wiersz Total", () => {
     expect(isIgnorableRow("Total")).toBe(true);
     expect(isIgnorableRow("SUMA")).toBe(true);
+  });
+});
+
+describe("detectAccountKind", () => {
+  it("odróżnia IKZE od IKE", () => {
+    expect(detectAccountKind("historia-ikze.xlsx")).toBe("ikze");
+    expect(detectAccountKind("XTB_IKE_2024.csv")).toBe("ike");
+    expect(detectAccountKind("cash-operations.xlsx")).toBe("standard");
   });
 });
 
@@ -58,7 +78,7 @@ Total;;;;;7999,50;;;;
     expect(first.grossProfit).toBeCloseTo(321.2, 5);
   });
 
-  it("czyta przykładowe operacje kasowe", () => {
+  it("czyta przykładowe operacje kasowe wraz z kupnem i transferem", () => {
     const parsed = parseCsvText(SAMPLE_CASH_CSV, "cash.csv");
     expect(parsed.cashOperations.map((row) => row.kind)).toEqual([
       "deposit",
@@ -69,6 +89,16 @@ Total;;;;;7999,50;;;;
       "interest",
       "withdrawal",
       "deposit",
+      "purchase",
+      "sale",
+      "stock_split",
+      "transfer",
     ]);
+  });
+
+  it("oznacza plik IKE po nazwie", () => {
+    const parsed = parseCsvText(SAMPLE_CASH_CSV, "historia-ike.csv");
+    expect(parsed.accountKind).toBe("ike");
+    expect(parsed.cashOperations[0]?.accountKind).toBe("ike");
   });
 });

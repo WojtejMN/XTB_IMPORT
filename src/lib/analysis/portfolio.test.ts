@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analyzePortfolio } from "./portfolio";
-import { sampleXtbHistory } from "../xtb/sample";
+import { mergeParsedFiles } from "../xtb/merge";
+import { sampleAccounts, sampleXtbHistory } from "../xtb/sample";
 
 describe("analyzePortfolio", () => {
   it("liczy sumę wpłat, zysk i stopy zwrotu na przykładowej historii", () => {
@@ -16,6 +17,31 @@ describe("analyzePortfolio", () => {
     expect(report.chart[0]?.deposits).toBe(0);
     expect(report.chart.at(-1)?.deposits).toBe(27_000);
     expect(report.chart.at(-1)?.profit).toBeCloseTo(4_104.65, 5);
+  });
+
+  it("nie wlicza kupna, sprzedaży i splitów do wpłat ani zysku", () => {
+    const merged = mergeParsedFiles(sampleAccounts(), ["ike"]);
+    const report = analyzePortfolio(merged, { treatTransfersAsExternal: true });
+    expect(report.totalDeposits).toBe(15_000);
+    expect(report.totalProfit).toBeCloseTo(153, 5);
+    expect(report.kindCounts.purchase).toBe(1);
+    expect(report.kindCounts.sale).toBe(1);
+    expect(report.kindCounts.stock_split).toBe(1);
+  });
+
+  it("w widoku wszystkich kont pomija transfery wewnętrzne", () => {
+    const merged = mergeParsedFiles(sampleAccounts(), ["standard", "ike", "ikze"]);
+    const report = analyzePortfolio(merged, { treatTransfersAsExternal: false });
+    expect(report.totalDeposits).toBe(47_000);
+    expect(report.totalWithdrawals).toBe(2_000);
+    expect(report.totalProfit).toBeCloseTo(4_104.65 + 153 + 55, 5);
+  });
+
+  it("w widoku IKZE liczy transfer przychodzący jak wpłatę", () => {
+    const merged = mergeParsedFiles(sampleAccounts(), ["ikze"]);
+    const report = analyzePortfolio(merged, { treatTransfersAsExternal: true });
+    expect(report.totalDeposits).toBe(8_000);
+    expect(report.totalProfit).toBe(55);
   });
 
   it("uwzględnia aktualną wartość konta w zysku i XIRR", () => {
