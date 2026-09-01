@@ -7,9 +7,9 @@ type MetricCardsProps = {
 
 function toneClass(value: number | null): string {
   if (value == null || value === 0) {
-    return "text-stone-900";
+    return "text-foreground";
   }
-  return value > 0 ? "text-teal-800" : "text-rose-800";
+  return value > 0 ? "text-positive" : "text-negative";
 }
 
 export function MetricCards({ report }: MetricCardsProps) {
@@ -50,13 +50,13 @@ export function MetricCards({ report }: MetricCardsProps) {
       {cards.map((card) => (
         <article
           key={card.label}
-          className="rounded-2xl border border-stone-200 bg-white p-5 shadow-sm"
+          className="rounded-2xl border border-border bg-surface p-5 shadow-[0_10px_30px_-18px_rgba(11,42,74,0.25)]"
         >
-          <p className="text-sm font-medium text-stone-600">{card.label}</p>
+          <p className="text-sm font-medium text-muted">{card.label}</p>
           <p className={`mt-2 text-3xl font-semibold tracking-tight ${toneClass(card.tone)}`}>
             {card.value}
           </p>
-          <p className="mt-2 text-sm text-stone-500">{card.hint}</p>
+          <p className="mt-2 text-sm text-muted">{card.hint}</p>
         </article>
       ))}
     </section>

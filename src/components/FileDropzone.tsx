@@ -29,10 +29,10 @@ export function FileDropzone({ onFile, disabled }: FileDropzoneProps) {
           onFile(file);
         }
       }}
-      className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed px-6 py-10 text-center transition ${
+      className={`flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed px-6 py-12 text-center shadow-[0_18px_40px_-28px_rgba(26,111,181,0.55)] transition ${
         isDragging
-          ? "border-teal-600 bg-teal-50"
-          : "border-stone-300 bg-white hover:border-teal-500 hover:bg-stone-50"
+          ? "border-primary bg-primary-soft"
+          : "border-primary/35 bg-surface hover:border-primary hover:bg-primary-soft/40"
       } ${disabled ? "pointer-events-none opacity-60" : ""}`}
     >
       <input
@@ -49,12 +49,18 @@ export function FileDropzone({ onFile, disabled }: FileDropzoneProps) {
           event.target.value = "";
         }}
       />
-      <span className="text-base font-semibold text-stone-900">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-soft text-primary">
+        <svg aria-hidden="true" viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <path d="M12 16V4m0 0 4 4M12 4 8 8" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M5 16v2.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V16" strokeLinecap="round" />
+        </svg>
+      </span>
+      <span className="mt-4 text-base font-semibold text-foreground">
         Upuść eksport XTB albo kliknij, aby wybrać plik
       </span>
-      <span className="mt-2 max-w-md text-sm leading-6 text-stone-600">
-        Obsługiwane formaty: XLSX z xStation (Historia konta) oraz CSV operacji kasowych
-        lub zamkniętych pozycji. Plik zostaje w przeglądarce.
+      <span className="mt-2 max-w-md text-sm leading-6 text-muted">
+        XLSX z xStation (Historia konta) albo CSV operacji kasowych i zamkniętych pozycji. Plik
+        zostaje wyłącznie w tej przeglądarce.
       </span>
     </label>
   );
