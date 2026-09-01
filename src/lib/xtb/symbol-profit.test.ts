@@ -162,7 +162,61 @@ describe("aggregateSymbolProfits", () => {
 
     const result = aggregateSymbolProfits(parsed);
     expect(result).toHaveLength(1);
-    expect(result[0]?.profit).toBeCloseTo(-1000 + 538, 5);
+    // Wartość 1210,5 − koszt 1000 = 210,5 (nie podwójne liczenie kupna).
+    expect(result[0]?.profit).toBeCloseTo(210.5, 5);
     expect(result[0]?.trades).toBe(0);
+    expect(result[0]?.openPositions).toBe(1);
+  });
+
+  it("łączy sprzedaż na jednym koncie z trzymaniem na innym", () => {
+    const parsed = file({
+      cashOperations: [
+        {
+          id: "1",
+          kind: "purchase",
+          rawType: "Stock purchase",
+          time: new Date("2024-01-01"),
+          comment: "",
+          symbol: "ASBIS.PL",
+          amount: -5000,
+          accountKind: "ike",
+        },
+        {
+          id: "2",
+          kind: "purchase",
+          rawType: "Stock purchase",
+          time: new Date("2024-03-01"),
+          comment: "",
+          symbol: "ASBIS.PL",
+          amount: -2000,
+          accountKind: "standard",
+        },
+        {
+          id: "3",
+          kind: "sale",
+          rawType: "Stock sell",
+          time: new Date("2024-06-01"),
+          comment: "",
+          symbol: "ASBIS.PL",
+          amount: 2500,
+          accountKind: "standard",
+        },
+      ],
+      openPositions: [
+        {
+          symbol: "ASBIS.PL",
+          netProfit: 538,
+          value: 5538,
+          accountKind: "ike",
+        },
+      ],
+    });
+
+    const result = aggregateSymbolProfits(parsed);
+    expect(result).toHaveLength(1);
+    // Zrealizowany +500 (PLN) + niezrealizowany +538 (IKE) = +1038
+    expect(result[0]?.profit).toBeCloseTo(1038, 5);
+    expect(result[0]?.trades).toBe(1);
+    expect(result[0]?.openPositions).toBe(1);
   });
 });

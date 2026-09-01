@@ -23,35 +23,72 @@ function isSymbolCashProfitKind(kind: CashKind): boolean {
   );
 }
 
+type SymbolAccumulator = {
+  symbol: string;
+  closedProfit: number;
+  openProfit: number;
+  openCostBasis: number;
+  purchases: number;
+  sales: number;
+  otherCash: number;
+  trades: number;
+  openPositions: number;
+};
+
+function computeSymbolProfit(acc: SymbolAccumulator): number {
+  let profit = acc.closedProfit + acc.otherCash + acc.sales;
+
+  if (acc.openPositions > 0) {
+    profit += acc.openProfit;
+    if (acc.openCostBasis > 0) {
+      // Koszt trzymanych akcji kompensuje kupna — unikamy podwójnego liczenia.
+      profit += acc.purchases + acc.openCostBasis;
+    }
+  } else {
+    profit += acc.purchases;
+  }
+
+  return profit;
+}
+
 export function aggregateSymbolProfits(parsed: ParsedXtbFile): SymbolProfit[] {
   const hasClosedPositions = parsed.closedPositions.length > 0;
-  const map = new Map<string, SymbolProfit>();
+  const map = new Map<string, SymbolAccumulator>();
 
-  function bump(
-    rawSymbol: string,
-    profitDelta: number,
-    saleDelta = 0,
-    openDelta = 0,
-  ) {
+  function getAccumulator(rawSymbol: string): SymbolAccumulator {
     const key = normalizeSymbolKey(rawSymbol);
-    const existing = map.get(key) ?? {
+    const existing = map.get(key);
+    if (existing) {
+      return existing;
+    }
+    const created: SymbolAccumulator = {
       symbol: rawSymbol.trim() || key,
-      profit: 0,
+      closedProfit: 0,
+      openProfit: 0,
+      openCostBasis: 0,
+      purchases: 0,
+      sales: 0,
+      otherCash: 0,
       trades: 0,
       openPositions: 0,
     };
-    existing.profit += profitDelta;
-    existing.trades += saleDelta;
-    existing.openPositions += openDelta;
-    map.set(key, existing);
+    map.set(key, created);
+    return created;
   }
 
   for (const position of parsed.closedPositions) {
-    bump(position.symbol, position.netProfit, 1, 0);
+    const acc = getAccumulator(position.symbol);
+    acc.closedProfit += position.netProfit;
+    acc.trades += 1;
   }
 
   for (const position of parsed.openPositions ?? []) {
-    bump(position.symbol, position.netProfit, 0, 1);
+    const acc = getAccumulator(position.symbol);
+    acc.openProfit += position.netProfit;
+    acc.openPositions += 1;
+    if (position.value != null) {
+      acc.openCostBasis += position.value - position.netProfit;
+    }
   }
 
   for (const operation of parsed.cashOperations) {
@@ -64,15 +101,32 @@ export function aggregateSymbolProfits(parsed: ParsedXtbFile): SymbolProfit[] {
       continue;
     }
 
-    if (operation.kind === "purchase" || operation.kind === "sale") {
-      bump(symbol, operation.amount, operation.kind === "sale" ? 1 : 0, 0);
+    const acc = getAccumulator(symbol);
+
+    if (operation.kind === "purchase") {
+      acc.purchases += operation.amount;
+      continue;
+    }
+
+    if (operation.kind === "sale") {
+      acc.sales += operation.amount;
+      acc.trades += 1;
       continue;
     }
 
     if (isSymbolCashProfitKind(operation.kind)) {
-      bump(symbol, operation.amount, 0, 0);
+      acc.otherCash += operation.amount;
     }
   }
 
-  return [...map.values()].sort((a, b) => b.profit - a.profit);
+  return [...map.values()]
+    .map(
+      (acc): SymbolProfit => ({
+        symbol: acc.symbol,
+        profit: computeSymbolProfit(acc),
+        trades: acc.trades,
+        openPositions: acc.openPositions,
+      }),
+    )
+    .sort((a, b) => b.profit - a.profit);
 }
