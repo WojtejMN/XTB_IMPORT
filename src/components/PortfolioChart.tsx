@@ -21,10 +21,10 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
   return (
     <section className="rounded-2xl border border-border bg-surface p-4 shadow-[0_10px_30px_-18px_rgba(11,42,74,0.25)] sm:p-6">
       <div className="mb-4 flex flex-col gap-1">
-        <h2 className="text-lg font-semibold text-foreground">Wpłaty i wyprodukowany zysk</h2>
+        <h2 className="text-lg font-semibold text-foreground">Kapitał netto i wartość portfela</h2>
         <p className="text-sm text-muted">
-          Niebieska linia to kumulatywna suma wpłat. Zielona linia to zysk zrealizowany z transakcji,
-          dywidend i odsetek.
+          Niebieska linia to wpłaty minus wypłaty (kapitał włożony netto). Zielona linia to kapitał netto
+          plus wyprodukowany zysk.
         </p>
       </div>
       <div className="h-80 w-full sm:h-96">
@@ -44,7 +44,7 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
             <Tooltip
               formatter={(value, name) => [
                 formatPln(Number(value ?? 0)),
-                name === "deposits" ? "Suma wpłat" : "Zysk",
+                name === "netCapital" ? "Kapitał netto" : "Kapitał + zysk",
               ]}
               labelFormatter={(label) => `Data: ${label}`}
               contentStyle={{
@@ -53,19 +53,23 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
                 fontSize: 13,
               }}
             />
-            <Legend formatter={(value) => (value === "deposits" ? "Suma wpłat" : "Zysk")} />
+            <Legend
+              formatter={(value) =>
+                value === "netCapital" ? "Kapitał netto (wpłaty − wypłaty)" : "Kapitał netto + zysk"
+              }
+            />
             <Line
               type="monotone"
-              dataKey="deposits"
-              name="deposits"
+              dataKey="netCapital"
+              name="netCapital"
               stroke="#1a6fb5"
               strokeWidth={2.5}
               dot={false}
             />
             <Line
               type="monotone"
-              dataKey="profit"
-              name="profit"
+              dataKey="equity"
+              name="equity"
               stroke="#0d7a62"
               strokeWidth={2.5}
               dot={false}

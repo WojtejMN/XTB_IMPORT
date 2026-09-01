@@ -57,8 +57,10 @@ export type ParsedXtbFile = {
 export type ChartPoint = {
   time: number;
   label: string;
-  deposits: number;
-  profit: number;
+  /** Kumulatywny kapitał netto: wpłaty − wypłaty. */
+  netCapital: number;
+  /** Kapitał netto + skumulowany zysk (wartość portfela). */
+  equity: number;
 };
 
 export type AnalyzeOptions = {

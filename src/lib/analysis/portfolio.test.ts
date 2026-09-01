@@ -14,9 +14,9 @@ describe("analyzePortfolio", () => {
     expect(report.totalReturn).toBeCloseTo(4_104.65 / 27_000, 8);
     expect(report.annualReturn).not.toBeNull();
     expect(report.chart.length).toBeGreaterThan(3);
-    expect(report.chart[0]?.deposits).toBe(0);
-    expect(report.chart.at(-1)?.deposits).toBe(27_000);
-    expect(report.chart.at(-1)?.profit).toBeCloseTo(4_104.65, 5);
+    expect(report.chart[0]?.netCapital).toBe(0);
+    expect(report.chart.at(-1)?.netCapital).toBe(25_000);
+    expect(report.chart.at(-1)?.equity).toBeCloseTo(25_000 + 4_104.65, 5);
   });
 
   it("nie wlicza kupna, sprzedaży i splitów do wpłat ani zysku", () => {
@@ -139,6 +139,7 @@ describe("analyzePortfolio", () => {
     expect(report.realizedProfit).toBeCloseTo(15.68, 5);
     expect(report.unrealizedProfit).toBeCloseTo(1104.39, 5);
     expect(report.totalProfit).toBeCloseTo(15.68 + 1104.39, 5);
-    expect(report.chart.at(-1)?.profit).toBeCloseTo(15.68 + 1104.39, 5);
+    expect(report.chart.at(-1)?.netCapital).toBe(3000);
+    expect(report.chart.at(-1)?.equity).toBeCloseTo(3000 + 15.68 + 1104.39, 5);
   });
 });

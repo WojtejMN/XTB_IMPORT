@@ -8,7 +8,7 @@ Plan produktu i definicje metryk są w `docs/PLAN.md`.
 Aplikacja importuje historię z xStation (XTB), analizuje ją lokalnie w przeglądarce
 i pokazuje:
 
-- wykres kumulatywnej **sumy wpłat** oraz **wyprodukowanego zysku**
+- wykres kumulatywnego **kapitału netto** (wpłaty − wypłaty) oraz **kapitału netto + zysku**
 - na dole: **łączną stopę zwrotu** i **roczną stopę zwrotu (XIRR)**
 
 UI ma być proste, czytelne i po polsku. Nie dodajemy zakładek, podatków ani
