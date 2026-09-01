@@ -55,7 +55,7 @@ export function Dashboard() {
             treatTransfersAsExternal: activeSelection.length === 1,
           })
         : null,
-    [merged, selectionKey, activeSelection.length],
+    [merged, selectionKey],
   );
 
   const accountBreakdown = useMemo(
@@ -229,7 +229,14 @@ export function Dashboard() {
               key={selectionKey}
               data={report.chart}
               perAccount={perAccountCharts}
-              visibleAccounts={activeSelection}
+              selectedAccounts={activeSelection}
+              availableAccounts={available}
+              onSelectedAccountsChange={(kinds) => {
+                if (kinds.length === 0) {
+                  return;
+                }
+                setSelected(kinds);
+              }}
             />
           ) : null}
 

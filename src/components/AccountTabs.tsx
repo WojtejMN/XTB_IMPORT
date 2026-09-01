@@ -10,12 +10,12 @@ type AccountTabsProps = {
 };
 
 export function AccountTabs({ selected, available, onChange }: AccountTabsProps) {
-  function handleClick(kind: AccountKind, multiSelect: boolean) {
+  function handleClick(kind: AccountKind, addToSelection: boolean) {
     if (!available.includes(kind)) {
       return;
     }
 
-    if (multiSelect) {
+    if (addToSelection) {
       if (selected.includes(kind)) {
         if (selected.length === 1) {
           return;
@@ -24,6 +24,14 @@ export function AccountTabs({ selected, available, onChange }: AccountTabsProps)
         return;
       }
       onChange([...selected, kind]);
+      return;
+    }
+
+    if (selected.includes(kind)) {
+      if (selected.length > 1) {
+        onChange(selected.filter((entry) => entry !== kind));
+        return;
+      }
       return;
     }
 
@@ -36,8 +44,8 @@ export function AccountTabs({ selected, available, onChange }: AccountTabsProps)
         <div>
           <h2 className="text-lg font-semibold text-foreground">Które konto pokazać?</h2>
           <p className="text-sm text-muted">
-            Kliknij konto, aby zobaczyć tylko jego wyniki. Ctrl+klik (⌘+klik na Macu) dodaje lub
-            usuwa konto z widoku łączonego.
+            Kliknij konto, aby zobaczyć tylko jego wyniki. Kliknij ponownie zaznaczone konto, aby je
+            usunąć z widoku. Ctrl+klik (⌘+klik) dodaje konto do widoku łączonego.
           </p>
         </div>
         <button

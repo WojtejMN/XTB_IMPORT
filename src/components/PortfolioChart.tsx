@@ -27,7 +27,9 @@ import type { AccountKind, ChartPoint } from "@/lib/xtb/types";
 type PortfolioChartProps = {
   data: ChartPoint[];
   perAccount?: Partial<Record<AccountKind, ChartPoint[]>>;
-  visibleAccounts?: AccountKind[];
+  selectedAccounts: AccountKind[];
+  availableAccounts: AccountKind[];
+  onSelectedAccountsChange: (accounts: AccountKind[]) => void;
 };
 
 type ChartMode = "simple" | "advanced";
@@ -133,23 +135,25 @@ function ChartTooltip({
   );
 }
 
-export function PortfolioChart({ data, perAccount, visibleAccounts = [] }: PortfolioChartProps) {
+export function PortfolioChart({
+  data,
+  perAccount,
+  selectedAccounts,
+  availableAccounts,
+  onSelectedAccountsChange,
+}: PortfolioChartProps) {
   const [mode, setMode] = useState<ChartMode>("simple");
   const [granularity, setGranularity] = useState<ChartGranularity>("month");
   const [dataView, setDataView] = useState<DataView>("value");
   const [brushStart, setBrushStart] = useState(0);
   const [brushEnd, setBrushEnd] = useState(0);
-  const [showAccounts, setShowAccounts] = useState<Record<AccountKind, boolean>>({
-    standard: true,
-    ike: true,
-    ikze: true,
-  });
 
-  const activeAccountKinds = visibleAccounts.filter((kind) => showAccounts[kind]);
+  const overlayKey = selectedAccounts.length > 1 ? selectedAccounts.slice().sort().join(",") : "";
+  const overlayAccounts = selectedAccounts.length > 1 ? selectedAccounts : [];
 
   const enriched = useMemo(
-    () => mergePerAccountSeries(data, perAccount ?? {}, activeAccountKinds),
-    [data, perAccount, activeAccountKinds],
+    () => mergePerAccountSeries(data, perAccount ?? {}, overlayAccounts),
+    [data, perAccount, overlayKey],
   );
 
   const series = useMemo(() => {
@@ -161,7 +165,7 @@ export function PortfolioChart({ data, perAccount, visibleAccounts = [] }: Portf
     const end = Math.max(0, series.length - 1);
     setBrushStart(0);
     setBrushEnd(end);
-  }, [series]);
+  }, [series, overlayKey]);
 
   const { startIndex, endIndex } = clampChartRange(series.length, brushStart, brushEnd);
   const visibleData = mode === "advanced" ? series.slice(startIndex, endIndex + 1) : series;
@@ -173,6 +177,17 @@ export function PortfolioChart({ data, perAccount, visibleAccounts = [] }: Portf
       visibleData.filter((point) => point.depositDelta > 0 || point.withdrawalDelta > 0),
     [visibleData],
   );
+
+  function toggleAccount(kind: AccountKind) {
+    if (selectedAccounts.includes(kind)) {
+      if (selectedAccounts.length === 1) {
+        return;
+      }
+      onSelectedAccountsChange(selectedAccounts.filter((entry) => entry !== kind));
+      return;
+    }
+    onSelectedAccountsChange([...selectedAccounts, kind]);
+  }
 
   function resetZoom() {
     setBrushStart(0);
@@ -265,19 +280,17 @@ export function PortfolioChart({ data, perAccount, visibleAccounts = [] }: Portf
         </div>
       </div>
 
-      {visibleAccounts.length > 1 && dataView === "value" ? (
+      {availableAccounts.length > 1 && dataView === "value" ? (
         <div className="mb-3 flex flex-wrap gap-2">
-          {visibleAccounts.map((kind) => (
+          {availableAccounts.map((kind) => (
             <label
               key={kind}
               className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted"
             >
               <input
                 type="checkbox"
-                checked={showAccounts[kind]}
-                onChange={() =>
-                  setShowAccounts((current) => ({ ...current, [kind]: !current[kind] }))
-                }
+                checked={selectedAccounts.includes(kind)}
+                onChange={() => toggleAccount(kind)}
                 className="accent-primary"
               />
               <span
@@ -310,7 +323,11 @@ export function PortfolioChart({ data, perAccount, visibleAccounts = [] }: Portf
 
       <div className="w-full" style={{ height: chartHeight }}>
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={visibleData} margin={{ top: 8, right: 16, left: 4, bottom: 8 }}>
+          <ComposedChart
+            key={overlayKey || "single"}
+            data={visibleData}
+            margin={{ top: 8, right: 16, left: 4, bottom: 8 }}
+          >
             <CartesianGrid stroke="#d7ebf8" strokeDasharray="3 3" />
             <XAxis
               dataKey="label"
@@ -368,7 +385,7 @@ export function PortfolioChart({ data, perAccount, visibleAccounts = [] }: Portf
                   fillOpacity={0.45}
                   strokeWidth={2}
                 />
-                {activeAccountKinds.map((kind) => (
+                {overlayAccounts.map((kind) => (
                   <Line
                     key={kind}
                     type="stepAfter"
