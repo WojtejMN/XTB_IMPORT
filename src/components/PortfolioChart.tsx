@@ -78,8 +78,10 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
   }, [series]);
 
   const { startIndex, endIndex } = clampChartRange(series.length, brushStart, brushEnd);
-  const visibleData = series.slice(startIndex, endIndex + 1);
-  const isZoomed = startIndex > 0 || endIndex < series.length - 1;
+  const visibleData =
+    mode === "advanced" ? series.slice(startIndex, endIndex + 1) : series;
+  const isZoomed =
+    mode === "advanced" && (startIndex > 0 || endIndex < series.length - 1);
   const chartHeight = mode === "advanced" ? 420 : 360;
 
   function resetZoom() {
@@ -94,8 +96,8 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
           <h2 className="text-lg font-semibold text-foreground">Kapitał netto i wartość portfela</h2>
           <p className="max-w-2xl text-sm text-muted">
             {mode === "simple"
-              ? "Przeciągnij suwak pod wykresem, aby przybliżyć wybrany okres. Każdy punkt to ostatni stan danego dnia."
-              : "Tryb zaawansowany: zmień skalę czasu i precyzyjnie przybliż zakres dat suwakiem poniżej."}
+              ? "Każdy punkt to ostatni stan danego dnia. Przełącz na tryb zaawansowany, aby przybliżyć zakres i zmienić skalę czasu."
+              : "Zmień skalę czasu i precyzyjnie przybliż zakres dat suwakiem poniżej."}
           </p>
         </div>
 
@@ -157,21 +159,23 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
         </div>
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted sm:text-sm">
-        <span>
-          {visibleData.length} z {series.length} punktów
-          {isZoomed ? " · widok przybliżony" : ""}
-        </span>
-        {isZoomed ? (
-          <button
-            type="button"
-            onClick={resetZoom}
-            className="font-semibold text-primary hover:text-primary-hover"
-          >
-            Pokaż całą historię
-          </button>
-        ) : null}
-      </div>
+      {mode === "advanced" ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted sm:text-sm">
+          <span>
+            {visibleData.length} z {series.length} punktów
+            {isZoomed ? " · widok przybliżony" : ""}
+          </span>
+          {isZoomed ? (
+            <button
+              type="button"
+              onClick={resetZoom}
+              className="font-semibold text-primary hover:text-primary-hover"
+            >
+              Pokaż całą historię
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="w-full" style={{ height: chartHeight }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -223,7 +227,7 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
         </ResponsiveContainer>
       </div>
 
-      {series.length > 1 ? (
+      {mode === "advanced" && series.length > 1 ? (
         <div className="mt-4 h-16 w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={series} margin={{ top: 0, right: 16, left: 4, bottom: 0 }}>

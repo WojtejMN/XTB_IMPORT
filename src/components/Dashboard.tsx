@@ -2,12 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { analyzePortfolio } from "@/lib/analysis/portfolio";
-import { formatPln } from "@/lib/format";
 import { stampAccountKind } from "@/lib/xtb/account";
 import { mergeParsedFiles } from "@/lib/xtb/merge";
 import { parseXtbFile } from "@/lib/xtb/parse";
 import { sampleAccounts } from "@/lib/xtb/sample";
-import { parseAmount } from "@/lib/xtb/values";
 import type { AccountKind, ParsedXtbFile } from "@/lib/xtb/types";
 import { AccountTabs } from "./AccountTabs";
 import { ExportGuide } from "./ExportGuide";
@@ -29,7 +27,6 @@ export function Dashboard() {
   const [selected, setSelected] = useState<AccountKind[]>(["standard", "ike", "ikze"]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [currentValue, setCurrentValue] = useState("");
 
   const available = useMemo(
     () => [...new Set(imports.map((file) => file.accountKind))],
@@ -40,19 +37,14 @@ export function Dashboard() {
     () => (imports.length > 0 ? mergeParsedFiles(imports, activeSelection) : null),
     [imports, activeSelection],
   );
-  const currentAccountValue = parseAmount(currentValue) ?? undefined;
   const report = useMemo(
     () =>
       merged
         ? analyzePortfolio(merged, {
-            currentAccountValue:
-              currentAccountValue != null && currentAccountValue >= 0
-                ? currentAccountValue
-                : undefined,
             treatTransfersAsExternal: activeSelection.length === 1,
           })
         : null,
-    [merged, currentAccountValue, activeSelection.length],
+    [merged, activeSelection.length],
   );
 
   useEffect(() => {
@@ -135,7 +127,6 @@ export function Dashboard() {
             onClear={() => {
               setImports([]);
               setError(null);
-              setCurrentValue("");
             }}
           />
 
@@ -145,7 +136,6 @@ export function Dashboard() {
               className="w-fit rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:border-primary hover:text-primary"
               onClick={() => {
                 setError(null);
-                setCurrentValue("");
                 setSelected(["standard", "ike", "ikze"]);
                 setImports(sampleAccounts());
               }}
@@ -197,26 +187,6 @@ export function Dashboard() {
           {activeSelection.length > 0 ? <PortfolioSummary report={report} /> : null}
 
           {activeSelection.length > 0 ? <PortfolioChart data={report.chart} /> : null}
-
-          <label className="flex max-w-md flex-col gap-2 text-sm text-muted">
-            Aktualna wartość zaznaczonych kont (opcjonalnie)
-            <input
-              type="text"
-              inputMode="decimal"
-              placeholder="np. 32 450,00"
-              value={currentValue}
-              onChange={(event) => setCurrentValue(event.target.value)}
-              className="rounded-xl border border-border bg-surface px-3 py-2.5 text-base text-foreground outline-none ring-primary/15 focus:border-primary focus:ring-4"
-            />
-            <span>
-              Jeśli podasz saldo z xStation, zysk i XIRR uwzględnią gotówkę i otwarte pozycje.
-              {merged?.openProfit
-                ? ` Z pliku: niezrealizowany wynik otwartych pozycji ${formatPln(merged.openProfit)}.`
-                : merged?.openPositionsValue
-                  ? " W wgranym eksporcie nie ma otwartego wyniku do doliczenia."
-                  : ""}
-            </span>
-          </label>
 
           {activeSelection.length > 0 ? <MetricCards report={report} /> : null}
           <ExportGuide />
