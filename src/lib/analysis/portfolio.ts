@@ -212,6 +212,7 @@ export function analyzePortfolio(
       ? openProfit
       : 0;
   const totalProfit = hasCurrentValue ? currentValue - netDeposits : realizedProfit + unrealizedProfit;
+  const portfolioValue = netDeposits + totalProfit;
 
   const dates = events.map((event) => event.time);
   const firstDate = dates[0] ?? null;
@@ -287,6 +288,7 @@ export function analyzePortfolio(
     realizedProfit,
     unrealizedProfit,
     totalProfit,
+    portfolioValue,
     totalReturn: totalDeposits > 0 ? totalProfit / totalDeposits : null,
     annualReturn,
     chart,

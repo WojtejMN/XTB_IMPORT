@@ -80,6 +80,8 @@ export type PortfolioReport = {
   realizedProfit: number;
   unrealizedProfit: number;
   totalProfit: number;
+  /** Kapitał netto + zysk (wartość portfela). */
+  portfolioValue: number;
   totalReturn: number | null;
   annualReturn: number | null;
   chart: ChartPoint[];

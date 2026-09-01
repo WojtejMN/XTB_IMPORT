@@ -11,6 +11,7 @@ describe("analyzePortfolio", () => {
     expect(report.totalWithdrawals).toBe(2_000);
     expect(report.netDeposits).toBe(25_000);
     expect(report.totalProfit).toBeCloseTo(4_104.65, 5);
+    expect(report.portfolioValue).toBeCloseTo(25_000 + 4_104.65, 5);
     expect(report.totalReturn).toBeCloseTo(4_104.65 / 27_000, 8);
     expect(report.annualReturn).not.toBeNull();
     expect(report.chart.length).toBeGreaterThan(3);

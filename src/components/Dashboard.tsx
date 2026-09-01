@@ -16,6 +16,7 @@ import { ImportedFiles } from "./ImportedFiles";
 import { MetricCards } from "./MetricCards";
 import { OperationSummary } from "./OperationSummary";
 import { PortfolioChart } from "./PortfolioChart";
+import { PortfolioSummary } from "./PortfolioSummary";
 
 const trustPoints = [
   "Dla inwestorów indywidualnych",
@@ -192,6 +193,8 @@ export function Dashboard() {
               ))}
             </div>
           ) : null}
+
+          {activeSelection.length > 0 ? <PortfolioSummary report={report} /> : null}
 
           {activeSelection.length > 0 ? <PortfolioChart data={report.chart} /> : null}
 

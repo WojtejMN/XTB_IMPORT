@@ -15,7 +15,8 @@ Aplikacja ma to policzyć po wrzuceniu eksportu i pokazać na jednej czytelnej s
 Wchodzi:
 
 - import XLSX z xStation (oba arkusze) oraz CSV tych tabel
-- wykres: kumulatywny kapitał netto (wpłaty − wypłaty) vs kapitał netto + zysk
+- wykres: kumulatywny kapitał netto (wpłaty − wypłaty) vs kapitał netto + zysk; tryb prosty (dzień + suwak przybliżenia) i zaawansowany (dzień/miesiąc/rok + suwak)
+- karta podsumowania: łączna wartość netto portfela
 - karty: łączna stopa zwrotu, roczna (XIRR), suma wpłat, zysk
 - opcjonalne pole „aktualna wartość konta” (otwarte pozycje)
 - analiza w 100% w przeglądarce
