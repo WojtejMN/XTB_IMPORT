@@ -25,7 +25,7 @@ export function SiteHeader() {
           ))}
         </nav>
         <div className="flex items-center gap-3">
-          <p className="hidden rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-primary sm:block">
+          <p className="hidden rounded-full bg-primary-soft px-3 py-1 text-xs font-semibold text-primary sm:block">
             Bez logowania
           </p>
           <a

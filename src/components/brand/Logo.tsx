@@ -25,7 +25,7 @@ export function Logo({ className = "" }: LogoProps) {
         <span className="text-[15px] font-semibold tracking-tight text-foreground">
           XTB Przegląd
         </span>
-        <span className="mt-0.5 text-[11px] font-medium tracking-wide text-muted">
+        <span className="mt-0.5 hidden text-[11px] font-medium tracking-wide text-muted sm:block">
           Wyniki Twojego konta
         </span>
       </span>

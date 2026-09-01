@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { analyzePortfolio } from "@/lib/analysis/portfolio";
 import { parseAmount } from "@/lib/xtb/values";
 import { parseXtbFile } from "@/lib/xtb/parse";
@@ -36,6 +36,13 @@ export function Dashboard() {
         : null,
     [parsed, currentAccountValue],
   );
+
+  useEffect(() => {
+    if (!parsed) {
+      return;
+    }
+    document.getElementById("wyniki")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [parsed]);
 
   async function handleFile(file: File) {
     setBusy(true);
@@ -122,7 +129,10 @@ export function Dashboard() {
       </section>
 
       {report ? (
-        <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8">
+        <section
+            id="wyniki"
+            className="scroll-mt-28 mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8"
+          >
           {report.warnings.length > 0 ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
               {report.warnings.map((warning) => (
