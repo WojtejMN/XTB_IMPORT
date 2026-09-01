@@ -8,7 +8,7 @@ Plan produktu i definicje metryk są w `docs/PLAN.md`.
 Aplikacja importuje historię z xStation (XTB), analizuje ją lokalnie w przeglądarce
 i pokazuje:
 
-- wykres kumulatywnej **sumy wpłat** oraz **wyprodukowanego zysku**
+- wykres kumulatywnego **kapitału netto** (wpłaty − wypłaty) oraz **kapitału netto + zysku**
 - na dole: **łączną stopę zwrotu** i **roczną stopę zwrotu (XIRR)**
 
 UI ma być proste, czytelne i po polsku. Nie dodajemy zakładek, podatków ani
@@ -119,7 +119,7 @@ Złe asercje: `toBeDefined()` na całym raporcie.
 - Jedna strona. Hierarchia: import → wykres → wskaźniki.
 - Czytelność: duży kontrast, `pl-PL`, stonowana paleta (kamień / teal / niebieski).
 - Stany: pusty, błąd, wczytany, ostrzeżenie (np. brak zamkniętych pozycji).
-- Wykres: dwie serie — suma wpłat i zysk. Nie dodawaj trzeciej osi bez potrzeby.
+- Wykres: dwie serie — kapitał netto i kapitał netto + zysk. Nie dodawaj trzeciej osi bez potrzeby.
 - Komponenty klienta tylko tam, gdzie jest interakcja albo Recharts.
 - Nie używaj `next/image` do dekoracji, która nic nie wnosi.
 

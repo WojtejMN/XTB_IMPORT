@@ -119,6 +119,7 @@ function buildEvents(
 
 function buildChart(events: TimelineEvent[]): ChartPoint[] {
   let deposits = 0;
+  let withdrawals = 0;
   let profit = 0;
   const points: ChartPoint[] = [];
 
@@ -129,24 +130,27 @@ function buildChart(events: TimelineEvent[]): ChartPoint[] {
   points.push({
     time: events[0].time.getTime() - 1,
     label: formatChartLabel(events[0].time),
-    deposits: 0,
-    profit: 0,
+    netCapital: 0,
+    equity: 0,
   });
 
   for (const event of events) {
     deposits += event.depositDelta;
+    withdrawals += event.withdrawalDelta;
     profit += event.profitDelta;
+    const netCapital = deposits - withdrawals;
+    const equity = netCapital + profit;
     const last = points[points.length - 1];
     if (last && last.time === event.time.getTime()) {
-      last.deposits = deposits;
-      last.profit = profit;
+      last.netCapital = netCapital;
+      last.equity = equity;
       continue;
     }
     points.push({
       time: event.time.getTime(),
       label: formatChartLabel(event.time),
-      deposits,
-      profit,
+      netCapital,
+      equity,
     });
   }
 
@@ -219,11 +223,12 @@ export function analyzePortfolio(
     chart.push({
       time: lastDate.getTime(),
       label: formatChartLabel(lastDate),
-      deposits: totalDeposits,
-      profit: totalProfit,
+      netCapital: netDeposits,
+      equity: currentValue,
     });
   } else if (hasOpenProfit && chart.length > 0) {
-    chart[chart.length - 1].profit = totalProfit;
+    const last = chart[chart.length - 1];
+    last.equity = netDeposits + totalProfit;
   }
 
   const terminalValue = hasCurrentValue ? currentValue : estimatedEquity + unrealizedProfit;
