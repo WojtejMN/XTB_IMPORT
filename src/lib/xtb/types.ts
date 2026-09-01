@@ -57,8 +57,10 @@ export type ParsedXtbFile = {
 export type ChartPoint = {
   time: number;
   label: string;
-  deposits: number;
-  profit: number;
+  /** Kumulatywny kapitał netto: wpłaty − wypłaty. */
+  netCapital: number;
+  /** Szacowana wartość portfela (jak w karcie podsumowania). */
+  portfolioValue: number;
 };
 
 export type AnalyzeOptions = {
@@ -78,6 +80,8 @@ export type PortfolioReport = {
   realizedProfit: number;
   unrealizedProfit: number;
   totalProfit: number;
+  /** Kapitał netto + zysk (wartość portfela). */
+  portfolioValue: number;
   totalReturn: number | null;
   annualReturn: number | null;
   chart: ChartPoint[];

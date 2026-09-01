@@ -15,7 +15,8 @@ Aplikacja ma to policzyć po wrzuceniu eksportu i pokazać na jednej czytelnej s
 Wchodzi:
 
 - import XLSX z xStation (oba arkusze) oraz CSV tych tabel
-- wykres: kumulatywna suma wpłat vs kumulatywny zysk
+- wykres: kumulatywny kapitał netto (wpłaty − wypłaty) vs kapitał netto + zysk; tryb prosty (dzień + suwak przybliżenia) i zaawansowany (dzień/miesiąc/rok + suwak)
+- karta podsumowania: łączna wartość netto portfela
 - karty: łączna stopa zwrotu, roczna (XIRR), suma wpłat, zysk
 - opcjonalne pole „aktualna wartość konta” (otwarte pozycje)
 - analiza w 100% w przeglądarce
@@ -36,13 +37,20 @@ flowchart TD
   A[Eksport XLSX/CSV z xStation] --> B[Wrzucenie pliku na stronę]
   B --> C[Parser CSV lub XLSX]
   C --> D[Klasyfikacja wpłat, wypłat, P/L, dywidend]
-  D --> E[Wykres suma wpłat vs zysk]
+  D --> E[Wykres kapitał netto vs kapitał + zysk]
   E --> F[Łączna i roczna stopa zwrotu]
 ```
 
 ## Definicje metryk
 
-### Suma wpłat
+### Wykres
+
+- **Niebieska linia** — kumulatywny kapitał netto: suma wpłat minus suma wypłat (wraz z transferami zewnętrznymi, gdy widok jednego konta).
+- **Zielona linia** — szacowana wartość portfela (wpłaty i zyski zwiększają wartość; wypłaty ją zmniejszają, nie poniżej zera; na końcu zgodna z kartą podsumowania).
+
+Karta „Aktualny kapitał wpłacony” pokazuje wpłaty minus wypłaty (ujemna wartość na zielono z minusem).
+
+### Suma wpłat (w raporcie wewnętrznym)
 
 Suma wszystkich operacji sklasyfikowanych jako `deposit`. Wypłaty **nie** pomniejszają tej linii — użytkownik pyta o sumę wpłat.
 

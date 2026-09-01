@@ -117,36 +117,109 @@ function buildEvents(
   return events.sort((a, b) => a.time.getTime() - b.time.getTime());
 }
 
-function buildChart(events: TimelineEvent[]): ChartPoint[] {
+type ChartBuildOptions = {
+  unrealizedAtEnd: number;
+  investmentStart: number | null;
+  investmentEnd: number;
+};
+
+function firstInvestmentTime(parsed: ParsedXtbFile): number | null {
+  let earliest: number | null = null;
+
+  for (const operation of parsed.cashOperations) {
+    if (operation.kind !== "purchase") {
+      continue;
+    }
+    const time = operation.time.getTime();
+    if (earliest == null || time < earliest) {
+      earliest = time;
+    }
+  }
+
+  for (const position of parsed.closedPositions) {
+    if (position.openTime == null) {
+      continue;
+    }
+    const time = position.openTime.getTime();
+    if (earliest == null || time < earliest) {
+      earliest = time;
+    }
+  }
+
+  return earliest;
+}
+
+function estimatedUnrealized(
+  time: number,
+  unrealizedAtEnd: number,
+  investmentStart: number | null,
+  investmentEnd: number,
+): number {
+  if (unrealizedAtEnd === 0) {
+    return 0;
+  }
+  if (investmentStart == null || investmentEnd <= investmentStart) {
+    return time >= investmentEnd ? unrealizedAtEnd : 0;
+  }
+  if (time <= investmentStart) {
+    return 0;
+  }
+  if (time >= investmentEnd) {
+    return unrealizedAtEnd;
+  }
+  const fraction = (time - investmentStart) / (investmentEnd - investmentStart);
+  return unrealizedAtEnd * fraction;
+}
+
+function buildChart(events: TimelineEvent[], options: ChartBuildOptions): ChartPoint[] {
   let deposits = 0;
-  let profit = 0;
+  let withdrawals = 0;
+  let portfolio = 0;
   const points: ChartPoint[] = [];
 
   if (events.length === 0) {
     return points;
   }
 
+  function portfolioValueAt(time: number): number {
+    const unrealized = estimatedUnrealized(
+      time,
+      options.unrealizedAtEnd,
+      options.investmentStart,
+      options.investmentEnd,
+    );
+    return Math.max(0, portfolio) + unrealized;
+  }
+
   points.push({
     time: events[0].time.getTime() - 1,
     label: formatChartLabel(events[0].time),
-    deposits: 0,
-    profit: 0,
+    netCapital: 0,
+    portfolioValue: 0,
   });
 
   for (const event of events) {
     deposits += event.depositDelta;
-    profit += event.profitDelta;
+    withdrawals += event.withdrawalDelta;
+    portfolio += event.depositDelta + event.profitDelta;
+    if (event.withdrawalDelta > 0) {
+      portfolio = Math.max(0, portfolio - event.withdrawalDelta);
+    }
+
+    const netCapital = deposits - withdrawals;
+    const time = event.time.getTime();
+    const value = portfolioValueAt(time);
     const last = points[points.length - 1];
-    if (last && last.time === event.time.getTime()) {
-      last.deposits = deposits;
-      last.profit = profit;
+    if (last && last.time === time) {
+      last.netCapital = netCapital;
+      last.portfolioValue = value;
       continue;
     }
     points.push({
-      time: event.time.getTime(),
+      time,
       label: formatChartLabel(event.time),
-      deposits,
-      profit,
+      netCapital,
+      portfolioValue: value,
     });
   }
 
@@ -208,22 +281,32 @@ export function analyzePortfolio(
       ? openProfit
       : 0;
   const totalProfit = hasCurrentValue ? currentValue - netDeposits : realizedProfit + unrealizedProfit;
+  const portfolioValue = netDeposits + totalProfit;
 
   const dates = events.map((event) => event.time);
   const firstDate = dates[0] ?? null;
   const lastEventDate = dates[dates.length - 1] ?? null;
   const lastDate = hasCurrentValue ? new Date() : lastEventDate;
 
-  const chart = buildChart(events);
-  if (hasCurrentValue && lastDate && chart.length > 0) {
-    chart.push({
-      time: lastDate.getTime(),
-      label: formatChartLabel(lastDate),
-      deposits: totalDeposits,
-      profit: totalProfit,
-    });
-  } else if (hasOpenProfit && chart.length > 0) {
-    chart[chart.length - 1].profit = totalProfit;
+  const investmentStart = firstInvestmentTime(parsed);
+  const investmentEnd = lastEventDate?.getTime() ?? Date.now();
+  const chart = buildChart(events, {
+    unrealizedAtEnd: unrealizedProfit,
+    investmentStart,
+    investmentEnd,
+  });
+  if (chart.length > 0) {
+    const last = chart[chart.length - 1];
+    if (hasCurrentValue && lastDate && lastDate.getTime() > last.time) {
+      chart.push({
+        time: lastDate.getTime(),
+        label: formatChartLabel(lastDate),
+        netCapital: netDeposits,
+        portfolioValue: currentValue!,
+      });
+    } else {
+      last.portfolioValue = portfolioValue;
+    }
   }
 
   const terminalValue = hasCurrentValue ? currentValue : estimatedEquity + unrealizedProfit;
@@ -282,6 +365,7 @@ export function analyzePortfolio(
     realizedProfit,
     unrealizedProfit,
     totalProfit,
+    portfolioValue,
     totalReturn: totalDeposits > 0 ? totalProfit / totalDeposits : null,
     annualReturn,
     chart,
