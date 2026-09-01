@@ -39,10 +39,14 @@ export function Dashboard() {
     () => [...new Set(imports.map((file) => file.accountKind))],
     [imports],
   );
-  const activeSelection = selected.filter((kind) => available.includes(kind));
+  const activeSelection = useMemo(
+    () => selected.filter((kind) => available.includes(kind)),
+    [selected, available],
+  );
+  const selectionKey = activeSelection.slice().sort().join(",");
   const merged = useMemo(
     () => (imports.length > 0 ? mergeParsedFiles(imports, activeSelection) : null),
-    [imports, activeSelection],
+    [imports, selectionKey],
   );
   const report = useMemo(
     () =>
@@ -51,18 +55,31 @@ export function Dashboard() {
             treatTransfersAsExternal: activeSelection.length === 1,
           })
         : null,
-    [merged, activeSelection.length],
+    [merged, selectionKey, activeSelection.length],
   );
 
   const accountBreakdown = useMemo(
     () => (imports.length > 0 ? analyzeAccountBreakdown(imports, activeSelection) : []),
-    [imports, activeSelection],
+    [imports, selectionKey],
   );
 
   const perAccountCharts = useMemo(
     () => (imports.length > 0 ? analyzePerAccountCharts(imports, activeSelection) : {}),
-    [imports, activeSelection],
+    [imports, selectionKey],
   );
+
+  useEffect(() => {
+    if (available.length === 0) {
+      return;
+    }
+    setSelected((current) => {
+      const filtered = current.filter((kind) => available.includes(kind));
+      if (filtered.length > 0) {
+        return filtered;
+      }
+      return [available[0]];
+    });
+  }, [available]);
 
   useEffect(() => {
     if (imports.length === 0) {
@@ -209,6 +226,7 @@ export function Dashboard() {
 
           {activeSelection.length > 0 ? (
             <PortfolioChart
+              key={selectionKey}
               data={report.chart}
               perAccount={perAccountCharts}
               visibleAccounts={activeSelection}

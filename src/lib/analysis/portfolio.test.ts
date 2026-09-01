@@ -59,6 +59,20 @@ describe("analyzePortfolio", () => {
     expect(withValue.annualReturn).not.toBe(withoutValue.annualReturn);
   });
 
+  it("wykres i wartość portfela różnią się między kontami", () => {
+    const imports = sampleAccounts();
+    const standard = analyzePortfolio(mergeParsedFiles(imports, ["standard"]), {
+      treatTransfersAsExternal: true,
+    });
+    const ike = analyzePortfolio(mergeParsedFiles(imports, ["ike"]), {
+      treatTransfersAsExternal: true,
+    });
+
+    expect(standard.portfolioValue).not.toBe(ike.portfolioValue);
+    expect(standard.chart.at(-1)?.portfolioValue).not.toBe(ike.chart.at(-1)?.portfolioValue);
+    expect(standard.totalDeposits).not.toBe(ike.totalDeposits);
+  });
+
   it("nie pokazuje ujemnej wartości portfela po wypłatach przekraczających wpłaty", () => {
     const parsed = {
       sourceName: "test.xlsx",
