@@ -68,7 +68,7 @@ export function Dashboard() {
     <>
       <section
         id="import"
-        className="scroll-mt-28 border-b border-border bg-[linear-gradient(180deg,var(--hero-from),var(--hero-to))]"
+        className="scroll-mt-28 border-b border-border bg-[radial-gradient(1200px_420px_at_50%_-40px,#b7dcf3,transparent),linear-gradient(180deg,var(--hero-from),var(--hero-to))]"
       >
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
           <div className="max-w-2xl">
