@@ -92,7 +92,7 @@ Zmiana parsera wymaga testu na fixturze zbliżonej do prawdziwego eksportu.
 
 Wzory są w `docs/PLAN.md`. Krótko:
 
-- **Suma wpłat** = suma depozytów (nie netto po wypłatach)
+- **Suma wpłat** = suma depozytów (metryka wewnętrzna; na karcie UI: kapitał netto)
 - **Zysk** = net P/L zamkniętych pozycji + dywidendy + odsetki − podatki u źródła
   i inne przepływy kasowe poza wpłatą/wypłatą
 - **Łączna stopa** = zysk / suma wpłat

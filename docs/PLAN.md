@@ -47,9 +47,9 @@ flowchart TD
 - **Niebieska linia** — kumulatywny kapitał netto: suma wpłat minus suma wypłat (wraz z transferami zewnętrznymi, gdy widok jednego konta).
 - **Zielona linia** — kapitał netto plus skumulowany zysk (dywidendy, odsetki, zamknięte pozycje itd.).
 
-Karta „Suma wpłat” nadal pokazuje sumę wpłat bez pomniejszania o wypłaty.
+Karta „Aktualny kapitał wpłacony” pokazuje wpłaty minus wypłaty (ujemna wartość na zielono z minusem).
 
-### Suma wpłat
+### Suma wpłat (w raporcie wewnętrznym)
 
 Suma wszystkich operacji sklasyfikowanych jako `deposit`. Wypłaty **nie** pomniejszają tej linii — użytkownik pyta o sumę wpłat.
 

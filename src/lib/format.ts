@@ -21,6 +21,13 @@ export function formatPct(value: number | null): string {
   return percent.format(value);
 }
 
+export function formatSignedPln(value: number): string {
+  if (value < 0) {
+    return `-${pln.format(Math.abs(value))}`;
+  }
+  return pln.format(value);
+}
+
 export function formatSignedPct(value: number | null): string {
   if (value == null || Number.isNaN(value)) {
     return "—";
