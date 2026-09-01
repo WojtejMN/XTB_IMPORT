@@ -105,7 +105,9 @@ export function PerformanceIndicators({ report }: PerformanceIndicatorsProps) {
                   <li key={entry.symbol} className="flex items-center justify-between gap-3 text-sm">
                     <span className="text-muted">
                       {index + 1}. {entry.symbol}
-                      <span className="ml-1 text-xs">({entry.trades})</span>
+                      <span className="ml-1 text-xs">
+                        ({entry.trades} {entry.trades === 1 ? "sprzedaż" : "sprzedaży"})
+                      </span>
                     </span>
                     <span className={`font-semibold ${toneClass(entry.profit)}`}>
                       {formatSignedPln(entry.profit)}

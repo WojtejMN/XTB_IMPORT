@@ -1,4 +1,5 @@
 import { duplicatesClosedPositionPnl, isProfitKind, isSubaccountTransfer } from "../xtb/classify";
+import { aggregateSymbolProfits } from "../xtb/symbol-profit";
 import { mergeParsedFiles } from "../xtb/merge";
 import type {
   AccountBreakdown,
@@ -10,7 +11,6 @@ import type {
   ParsedXtbFile,
   PortfolioMetrics,
   PortfolioReport,
-  SymbolProfit,
 } from "../xtb/types";
 import { xirr, type CashFlow } from "./xirr";
 
@@ -349,17 +349,7 @@ function computeMetrics(parsed: ParsedXtbFile, firstDate: Date | null, lastDate:
         }
       : null;
 
-  const symbolMap = new Map<string, SymbolProfit>();
-  for (const position of closed) {
-    const key = position.symbol || "Nieznany";
-    const existing = symbolMap.get(key) ?? { symbol: key, profit: 0, trades: 0 };
-    existing.profit += position.netProfit;
-    existing.trades += 1;
-    symbolMap.set(key, existing);
-  }
-  const topSymbols = [...symbolMap.values()]
-    .sort((a, b) => b.profit - a.profit)
-    .slice(0, 5);
+  const topSymbols = aggregateSymbolProfits(parsed).slice(0, 5);
 
   const investingDays =
     firstDate && lastDate
