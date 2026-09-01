@@ -134,4 +134,35 @@ describe("aggregateSymbolProfits", () => {
     expect(result[0]?.profit).toBeCloseTo(-1000 + 1300 - 500 + 700 + 40 - 6, 5);
     expect(result[0]?.trades).toBe(2);
   });
+
+  it("dolicza zysk z otwartych pozycji", () => {
+    const parsed = file({
+      cashOperations: [
+        {
+          id: "1",
+          kind: "purchase",
+          rawType: "Stock purchase",
+          time: new Date("2024-01-01"),
+          comment: "",
+          symbol: "ACM.PL",
+          amount: -1000,
+          accountKind: "ike",
+        },
+      ],
+      openPositions: [
+        {
+          symbol: "ACM.PL",
+          netProfit: 538,
+          grossProfit: 1020,
+          value: 1210.5,
+          accountKind: "ike",
+        },
+      ],
+    });
+
+    const result = aggregateSymbolProfits(parsed);
+    expect(result).toHaveLength(1);
+    expect(result[0]?.profit).toBeCloseTo(-1000 + 538, 5);
+    expect(result[0]?.trades).toBe(0);
+  });
 });

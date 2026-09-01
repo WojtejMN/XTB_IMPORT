@@ -43,11 +43,20 @@ export type ClosedPosition = {
   accountKind: AccountKind;
 };
 
+export type OpenPosition = {
+  symbol: string;
+  netProfit: number;
+  grossProfit?: number;
+  value?: number;
+  accountKind: AccountKind;
+};
+
 export type ParsedXtbFile = {
   sourceName: string;
   accountKind: AccountKind;
   cashOperations: CashOperation[];
   closedPositions: ClosedPosition[];
+  openPositions?: OpenPosition[];
   warnings: string[];
   recognized?: boolean;
   openProfit?: number;
@@ -82,6 +91,7 @@ export type SymbolProfit = {
   symbol: string;
   profit: number;
   trades: number;
+  openPositions: number;
 };
 
 export type PositionHighlight = {

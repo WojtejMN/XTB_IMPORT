@@ -106,7 +106,11 @@ export function PerformanceIndicators({ report }: PerformanceIndicatorsProps) {
                     <span className="text-muted">
                       {index + 1}. {entry.symbol}
                       <span className="ml-1 text-xs">
-                        ({entry.trades} {entry.trades === 1 ? "sprzedaż" : "sprzedaży"})
+                        ({entry.trades} {entry.trades === 1 ? "sprzedaż" : "sprzedaży"}
+                        {entry.openPositions > 0
+                          ? ` · ${entry.openPositions} otwartych`
+                          : ""}
+                        )
                       </span>
                     </span>
                     <span className={`font-semibold ${toneClass(entry.profit)}`}>
