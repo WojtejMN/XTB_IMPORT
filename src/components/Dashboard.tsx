@@ -185,7 +185,7 @@ export function Dashboard() {
             </p>
           ) : null}
 
-          {report.warnings.length > 0 ? (
+          {activeSelection.length > 0 && report.warnings.length > 0 ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
               {report.warnings.map((warning) => (
                 <p key={warning}>{warning}</p>
