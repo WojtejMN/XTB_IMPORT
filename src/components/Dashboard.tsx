@@ -42,6 +42,7 @@ export function Dashboard() {
         return;
       }
       setParsed(next);
+      setCurrentValue("");
     } catch {
       setParsed(null);
       setError("Nie udało się odczytać pliku. Spróbuj XLSX albo CSV z xStation.");
@@ -73,6 +74,7 @@ export function Dashboard() {
           className="rounded-full border border-stone-300 bg-white px-4 py-2 text-sm font-medium text-stone-800 transition hover:border-stone-400 hover:bg-stone-50"
           onClick={() => {
             setError(null);
+            setCurrentValue("");
             setParsed(sampleXtbHistory());
           }}
         >
@@ -86,7 +88,7 @@ export function Dashboard() {
         ) : null}
       </div>
 
-      <ExportGuide />
+      {report ? null : <ExportGuide />}
 
       {error ? (
         <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
@@ -96,6 +98,14 @@ export function Dashboard() {
 
       {report ? (
         <>
+          {report.warnings.length > 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              {report.warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </div>
+          ) : null}
+
           <PortfolioChart data={report.chart} />
 
           <label className="flex max-w-md flex-col gap-2 text-sm text-stone-700">
@@ -114,14 +124,7 @@ export function Dashboard() {
           </label>
 
           <MetricCards report={report} />
-
-          {report.warnings.length > 0 ? (
-            <ul className="list-disc space-y-1 pl-5 text-sm text-stone-600">
-              {report.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          ) : null}
+          <ExportGuide />
         </>
       ) : null}
     </div>
