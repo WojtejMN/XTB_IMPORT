@@ -59,8 +59,8 @@ export type ChartPoint = {
   label: string;
   /** Kumulatywny kapitał netto: wpłaty − wypłaty. */
   netCapital: number;
-  /** Kapitał netto + skumulowany zysk (wartość portfela). */
-  equity: number;
+  /** Szacowana wartość portfela (jak w karcie podsumowania). */
+  portfolioValue: number;
 };
 
 export type AnalyzeOptions = {

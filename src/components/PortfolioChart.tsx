@@ -50,7 +50,7 @@ function ChartTooltip({
       <p className="mb-2 font-medium text-foreground">Data: {label}</p>
       {payload.map((entry) => (
         <p key={entry.name} className="text-muted" style={{ color: entry.color }}>
-          {entry.name === "netCapital" ? "Kapitał netto" : "Kapitał + zysk"}:{" "}
+          {entry.name === "netCapital" ? "Kapitał netto" : "Wartość portfela"}:{" "}
           <span className="font-semibold text-foreground">{formatPln(Number(entry.value ?? 0))}</span>
         </p>
       ))}
@@ -202,7 +202,7 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
             <Tooltip content={<ChartTooltip />} />
             <Legend
               formatter={(value) =>
-                value === "netCapital" ? "Kapitał netto (wpłaty − wypłaty)" : "Kapitał netto + zysk"
+                value === "netCapital" ? "Kapitał netto (wpłaty − wypłaty)" : "Wartość portfela"
               }
             />
             <Line
@@ -216,8 +216,8 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
             />
             <Line
               type="stepAfter"
-              dataKey="equity"
-              name="equity"
+              dataKey="portfolioValue"
+              name="portfolioValue"
               stroke="#0d7a62"
               strokeWidth={2.5}
               dot={mode === "advanced" && visibleData.length <= 40 ? { r: 2.5 } : false}
@@ -233,7 +233,7 @@ export function PortfolioChart({ data }: PortfolioChartProps) {
             <LineChart data={series} margin={{ top: 0, right: 16, left: 4, bottom: 0 }}>
               <XAxis dataKey="label" hide />
               <YAxis hide domain={["dataMin", "dataMax"]} />
-              <Line type="stepAfter" dataKey="equity" stroke="#0d7a62" strokeWidth={1} dot={false} />
+              <Line type="stepAfter" dataKey="portfolioValue" stroke="#0d7a62" strokeWidth={1} dot={false} />
               <Brush
                 dataKey="label"
                 height={28}

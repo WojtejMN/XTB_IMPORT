@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { aggregateChartPoints, clampChartRange, formatBucketLabel } from "./chart-series";
 import type { ChartPoint } from "../xtb/types";
 
-function point(time: string, netCapital: number, equity: number): ChartPoint {
+function point(time: string, netCapital: number, portfolioValue: number): ChartPoint {
   const date = new Date(time);
   return {
     time: date.getTime(),
     label: date.toISOString(),
     netCapital,
-    equity,
+    portfolioValue,
   };
 }
 
@@ -34,8 +34,8 @@ describe("aggregateChartPoints", () => {
   it("scala do lat", () => {
     const yearly = aggregateChartPoints(series, "year");
     expect(yearly).toHaveLength(2);
-    expect(yearly[0]?.equity).toBe(4200);
-    expect(yearly[1]?.equity).toBe(5400);
+    expect(yearly[0]?.portfolioValue).toBe(4200);
+    expect(yearly[1]?.portfolioValue).toBe(5400);
   });
 
   it("dla dni zostawia ostatni punkt danego dnia", () => {

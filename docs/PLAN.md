@@ -46,7 +46,7 @@ flowchart TD
 ### Wykres
 
 - **Niebieska linia** — kumulatywny kapitał netto: suma wpłat minus suma wypłat (wraz z transferami zewnętrznymi, gdy widok jednego konta).
-- **Zielona linia** — kapitał netto plus skumulowany zysk (dywidendy, odsetki, zamknięte pozycje itd.).
+- **Zielona linia** — szacowana wartość portfela (wpłaty i zyski zwiększają wartość; wypłaty ją zmniejszają, nie poniżej zera; na końcu zgodna z kartą podsumowania).
 
 Karta „Aktualny kapitał wpłacony” pokazuje wpłaty minus wypłaty (ujemna wartość na zielono z minusem).
 
