@@ -1,0 +1,49 @@
+import type { AccountKind, ParsedXtbFile } from "./types";
+
+export const ACCOUNT_LABELS: Record<AccountKind, string> = {
+  standard: "Portfel zwykły",
+  ike: "IKE",
+  ikze: "IKZE",
+};
+
+export const ALL_ACCOUNT_KINDS: AccountKind[] = ["standard", "ike", "ikze"];
+
+export function detectAccountKind(sourceName: string, preview = ""): AccountKind {
+  const fileName = sourceName.toLowerCase().split(/[/\\]/).pop() ?? sourceName.toLowerCase();
+  if (fileName.includes("ikze")) {
+    return "ikze";
+  }
+  if (/(^|[^a-z0-9])ike([^a-z0-9]|$)/i.test(fileName)) {
+    return "ike";
+  }
+  if (/(^|[^a-z0-9])pln([^a-z0-9]|$)/i.test(fileName) || fileName.includes("my trades")) {
+    return "standard";
+  }
+
+  const haystack = preview.toLowerCase();
+  if (haystack.includes("ikze")) {
+    return "ikze";
+  }
+  // "IKE deposit" appears on a regular PLN account when money is sent to IKE.
+  // Trust the Open Positions product summary instead of cash types.
+  if (/\bike[\s,;]+value\b/.test(haystack) || haystack.includes("indywidualne konto emerytalne")) {
+    return "ike";
+  }
+  return "standard";
+}
+
+export function stampAccountKind(file: ParsedXtbFile, accountKind: AccountKind): ParsedXtbFile {
+  return {
+    ...file,
+    accountKind,
+    cashOperations: file.cashOperations.map((operation) => ({ ...operation, accountKind })),
+    closedPositions: file.closedPositions.map((position) => ({ ...position, accountKind })),
+  };
+}
+
+export function previewFromRows(rows: unknown[][]): string {
+  return rows
+    .slice(0, 12)
+    .map((row) => row.map((cell) => String(cell ?? "")).join(" "))
+    .join(" ");
+}

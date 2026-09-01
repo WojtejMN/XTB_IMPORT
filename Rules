@@ -1,1 +1,139 @@
-Rules about code:
+# Zasady pisania kodu, testów i analiz XTB
+
+Ten plik jest źródłem prawdy dla ludzi i agentów pracujących w tym repozytorium.
+Plan produktu i definicje metryk są w `docs/PLAN.md`.
+
+## Cel aplikacji
+
+Aplikacja importuje historię z xStation (XTB), analizuje ją lokalnie w przeglądarce
+i pokazuje:
+
+- wykres kumulatywnej **sumy wpłat** oraz **wyprodukowanego zysku**
+- na dole: **łączną stopę zwrotu** i **roczną stopę zwrotu (XIRR)**
+
+UI ma być proste, czytelne i po polsku. Nie dodajemy zakładek, podatków ani
+dashboardów „na zapas”.
+
+## Stack
+
+- Next.js (App Router) + React + TypeScript `strict`
+- Tailwind CSS v4
+- Recharts
+- Vitest
+- Parser XLSX: `fflate` + `fast-xml-parser` (bez SheetJS / ExcelJS)
+
+Trzymaj się aktualnego API z `node_modules/next/dist/docs/`. Nie wracaj do
+Pages Router, `middleware.ts` (w Next 16 jest `proxy.ts`) ani Tailwind v3
+(`@tailwind base`).
+
+## Architektura
+
+```
+plik XTB → src/lib/xtb (parser) → src/lib/analysis (metryki) → komponenty UI
+```
+
+- Parser i matematyka są **czystymi funkcjami**. Nie czytają `window`, nie
+  zapisują plików, nie wołają sieci.
+- UI (`src/components`) jest cienką warstwą: wczytuje plik, pokazuje wynik, błąd
+  i stan pusty.
+- Import odbywa się **w całości w przeglądarce**. Nie wolno wysyłać historii
+  transakcji na serwer, do logów ani do analityki.
+- Waluta na MVP: PLN. Nie zgaduj EUR/USD bez kolumny w pliku.
+
+## TypeScript i styl
+
+- `strict: true`. Bez `any`. Wąskie wyjątki: `unknown` + zwężenie typu.
+- Nazwy w kodzie po angielsku. Teksty UI po polsku.
+- Małe, nazwane funkcje zamiast komentarzy tłumaczących „co”.
+- Komentarz tylko gdy tłumaczy **dlaczego** (np. literówka `DIVIDENT` w eksporcie XTB).
+- Nie zostawiaj `console.log`.
+- Nie commituj `.env`, sekretów, prawdziwych wyciągów z konta.
+
+Struktura:
+
+| Katalog | Odpowiedzialność |
+| --- | --- |
+| `src/lib/xtb` | typy, klasyfikacja, CSV/XLSX |
+| `src/lib/analysis` | kumulatywy, stopy zwrotu, XIRR |
+| `src/lib/format.ts` | `pl-PL` / PLN |
+| `src/components` | UI klienta |
+| `src/app` | layout, strona, style |
+
+## Parser XTB
+
+Obsługiwane wejście:
+
+1. XLSX z xStation — arkusze `Cash Operations` / `Closed Positions` / `Open Positions`
+   albo starsze `CASH OPERATION HISTORY` i `CLOSED POSITION HISTORY`
+2. CSV tych samych tabel (`;` albo `,`, UTF-8, ewentualnie BOM)
+
+Zasady parsera:
+
+- Szukaj wiersza nagłówka w pierwszych ~40 wierszach. Nie zakładaj, że tabela
+  zaczyna się od wiersza 1 (XTB dopisuje metadane nad tabelą).
+- Mapuj kolumny po nazwie, nie po indeksie. Aliasuj angielski i polski,
+  także `Close Time (UTC)` i `Profit/Loss`.
+- Pomijaj wiersz `Total` / `Suma` oraz stopkę `Profit/loss` w pozycjach.
+- Typy kasowe: `deposit`, `withdrawal` (także z sufiksem numeru konta),
+  `DIVIDENT` (literówka XTB), `Withholding Tax`, `Free-funds Interest` /
+  `Free funds interest`, `IKE deposit` / `IKE return` / `IKE tax`,
+  `Stock purchase` / `Stock sell`, `Close trade`.
+- Nazwa pliku `PLN_…` / `IKE_…` / `IKZE_…` ustala typ konta; treść `IKE deposit`
+  na rachunku zwykłym nie może przerobić go na IKE.
+- Nie parsuj arkusza Open Positions jako zamkniętych transakcji.
+- Wpłata/wypłata: bierz `abs(amount)` i znak z klasyfikacji typu, bo XTB bywa
+  niekonsekwentny ze znakiem.
+- Net P/L pozycji = kolumna `Profit/Loss` albo `Gross P/L + Commission + Swap + Rollover`.
+- Daty: `DD.MM.YYYY[ HH:mm:ss]`, ISO, serial Excela.
+
+Zmiana parsera wymaga testu na fixturze zbliżonej do prawdziwego eksportu.
+
+## Metryki — nie zmieniaj definicji po cichu
+
+Wzory są w `docs/PLAN.md`. Krótko:
+
+- **Suma wpłat** = suma depozytów (nie netto po wypłatach)
+- **Zysk** = net P/L zamkniętych pozycji + dywidendy + odsetki − podatki u źródła
+  i inne przepływy kasowe poza wpłatą/wypłatą
+- **Łączna stopa** = zysk / suma wpłat
+- **Roczna stopa** = XIRR; wpłata = przepływ ujemny inwestora, wypłata = dodatni,
+  wartość końcowa = kapitał netto + zysk (albo saldo podane przez użytkownika)
+
+Jeśli zmieniasz wzór, zmień PLAN, etykietę w UI i test.
+
+## Testy
+
+- Framework: Vitest. Pliki: `src/**/*.test.ts` obok kodu.
+- `npm test` musi przechodzić przed commitem z logiką.
+- Testuj: klasyfikację typów, CSV z metadanymi i `Total`, XLSX z dwoma arkuszami,
+  kwoty PL (`10 000,00`), XIRR (przykład Excel), agregację portfela.
+- Fixtures syntetyczne, nigdy prawdziwy wyciąg z konta.
+- Nie mockuj parsera, żeby „przetestować” UI. Testuj czyste funkcje.
+- Nie snapshotuj całego DOM-u bez powodu.
+
+Dobre asercje: konkretna kwota, data, liczba wierszy, `toBeCloseTo` dla float.
+Złe asercje: `toBeDefined()` na całym raporcie.
+
+## UI
+
+- Jedna strona. Hierarchia: import → wykres → wskaźniki.
+- Czytelność: duży kontrast, `pl-PL`, stonowana paleta (kamień / teal / niebieski).
+- Stany: pusty, błąd, wczytany, ostrzeżenie (np. brak zamkniętych pozycji).
+- Wykres: dwie serie — suma wpłat i zysk. Nie dodawaj trzeciej osi bez potrzeby.
+- Komponenty klienta tylko tam, gdzie jest interakcja albo Recharts.
+- Nie używaj `next/image` do dekoracji, która nic nie wnosi.
+
+## Git i recenzja
+
+- Gałęzie: `cursor/<krotki-opis>-17a6` albo `feat/<krotki-opis>`.
+- Commit opisuje **dlaczego**, nie listę plików.
+- PR: co weszło, jak liczymy metryki, jak uruchomić `npm test` i `npm run dev`.
+- Nie mieszaj refaktoru parsera z kosmetyką CSS w jednym PR, jeśli da się uniknąć.
+
+## Czego nie robić
+
+- Backend do przechowywania historii konta
+- Wysyłka pliku XTB poza przeglądarkę
+- Optymalizacja podatkowa / PIT-38 w MVP
+- Zależności z znanymi lukami tylko dlatego, że „tak się parsuje xlsx”
+- Nowe biblioteki UI, state manager, baza, auth — dopóki nie są potrzebne

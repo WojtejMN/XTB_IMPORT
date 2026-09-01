@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+:root {
+  --background: #e3f2fb;
+  --foreground: #0b2a4a;
+  --surface: #ffffff;
+  --muted: #4d6b85;
+  --primary: #1a6fb5;
+  --primary-hover: #155d99;
+  --primary-soft: #cfe6f6;
+  --border: #b7d7ee;
+  --header: rgba(232, 245, 252, 0.94);
+  --footer: #d5ebf7;
+  --positive: #0d7a62;
+  --negative: #b42318;
+  --hero-from: #cfe8f8;
+  --hero-to: #e3f2fb;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-border: var(--border);
+  --color-header: var(--header);
+  --color-footer: var(--footer);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --font-sans: var(--font-jakarta);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+}
+
+::selection {
+  background: var(--primary-soft);
+  color: var(--foreground);
+}

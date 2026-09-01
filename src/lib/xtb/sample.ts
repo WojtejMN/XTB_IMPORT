@@ -1,0 +1,332 @@
+import { stampAccountKind } from "./account";
+import type { AccountKind, CashOperation, ClosedPosition, ParsedXtbFile } from "./types";
+
+function at(iso: string): Date {
+  return new Date(iso);
+}
+
+function cash(
+  accountKind: AccountKind,
+  operation: Omit<CashOperation, "accountKind">,
+): CashOperation {
+  return { ...operation, accountKind };
+}
+
+function trade(
+  accountKind: AccountKind,
+  position: Omit<ClosedPosition, "accountKind">,
+): ClosedPosition {
+  return { ...position, accountKind };
+}
+
+export function sampleXtbHistory(): ParsedXtbFile {
+  return stampAccountKind(
+    {
+      sourceName: "przyklad-zwykly.csv",
+      accountKind: "standard",
+      warnings: [],
+      cashOperations: [
+        cash("standard", {
+          id: "1",
+          kind: "deposit",
+          rawType: "deposit",
+          time: at("2023-01-10T10:00:00"),
+          comment: "Wpłata",
+          symbol: "",
+          amount: 10_000,
+        }),
+        cash("standard", {
+          id: "2",
+          kind: "deposit",
+          rawType: "deposit",
+          time: at("2023-03-15T09:30:00"),
+          comment: "Wpłata",
+          symbol: "",
+          amount: 5_000,
+        }),
+        cash("standard", {
+          id: "3",
+          kind: "dividend",
+          rawType: "DIVIDENT",
+          time: at("2023-06-20T00:00:00"),
+          comment: "Apple",
+          symbol: "AAPL.US",
+          amount: 85,
+        }),
+        cash("standard", {
+          id: "4",
+          kind: "withholding_tax",
+          rawType: "Withholding Tax",
+          time: at("2023-06-20T00:00:00"),
+          comment: "Apple",
+          symbol: "AAPL.US",
+          amount: -12.75,
+        }),
+        cash("standard", {
+          id: "5",
+          kind: "deposit",
+          rawType: "deposit",
+          time: at("2024-01-05T11:00:00"),
+          comment: "Wpłata",
+          symbol: "",
+          amount: 8_000,
+        }),
+        cash("standard", {
+          id: "6",
+          kind: "interest",
+          rawType: "Free-funds Interest 2024-08",
+          time: at("2024-08-30T00:00:00"),
+          comment: "Odsetki",
+          symbol: "",
+          amount: 22.4,
+        }),
+        cash("standard", {
+          id: "7",
+          kind: "withdrawal",
+          rawType: "Withdrawal from 1844768",
+          time: at("2024-11-10T12:00:00"),
+          comment: "Wypłata",
+          symbol: "",
+          amount: -2_000,
+        }),
+        cash("standard", {
+          id: "8",
+          kind: "deposit",
+          rawType: "deposit",
+          time: at("2025-06-01T08:15:00"),
+          comment: "Wpłata",
+          symbol: "",
+          amount: 4_000,
+        }),
+        cash("standard", {
+          id: "9",
+          kind: "transfer",
+          rawType: "transfer",
+          time: at("2023-04-01T10:00:00"),
+          comment: "Transfer do IKZE",
+          symbol: "",
+          amount: -3_000,
+        }),
+      ],
+      closedPositions: [
+        trade("standard", {
+          position: "101",
+          symbol: "EURUSD",
+          type: "buy",
+          volume: 0.1,
+          openTime: at("2023-01-12T10:00:00"),
+          closeTime: at("2023-01-20T16:00:00"),
+          commission: 0,
+          swap: -1.2,
+          rollover: 0,
+          grossProfit: 321.2,
+          netProfit: 320,
+          comment: "",
+        }),
+        trade("standard", {
+          position: "102",
+          symbol: "US500",
+          type: "buy",
+          volume: 0.05,
+          openTime: at("2023-07-01T09:00:00"),
+          closeTime: at("2023-09-01T15:00:00"),
+          commission: -2.5,
+          swap: 0,
+          rollover: 0,
+          grossProfit: -147.5,
+          netProfit: -150,
+          comment: "",
+        }),
+        trade("standard", {
+          position: "103",
+          symbol: "CDR.PL",
+          type: "buy",
+          volume: 10,
+          openTime: at("2024-02-01T10:00:00"),
+          closeTime: at("2024-04-12T11:20:00"),
+          commission: -8,
+          swap: 0,
+          rollover: 0,
+          grossProfit: 1_108,
+          netProfit: 1_100,
+          comment: "",
+        }),
+        trade("standard", {
+          position: "104",
+          symbol: "NVDA.US",
+          type: "buy",
+          volume: 2,
+          openTime: at("2024-12-02T14:00:00"),
+          closeTime: at("2025-02-14T16:00:00"),
+          commission: -4,
+          swap: 0,
+          rollover: 0,
+          grossProfit: 644,
+          netProfit: 640,
+          comment: "",
+        }),
+        trade("standard", {
+          position: "105",
+          symbol: "PZU.PL",
+          type: "buy",
+          volume: 40,
+          openTime: at("2025-07-10T09:00:00"),
+          closeTime: at("2025-12-20T15:45:00"),
+          commission: -6,
+          swap: 0,
+          rollover: 0,
+          grossProfit: 2_106,
+          netProfit: 2_100,
+          comment: "",
+        }),
+      ],
+    },
+    "standard",
+  );
+}
+
+export function sampleIkeHistory(): ParsedXtbFile {
+  return stampAccountKind(
+    {
+      sourceName: "przyklad-ike.csv",
+      accountKind: "ike",
+      warnings: [],
+      cashOperations: [
+        cash("ike", {
+          id: "i1",
+          kind: "deposit",
+          rawType: "deposit",
+          time: at("2023-02-01T09:00:00"),
+          comment: "Wpłata IKE",
+          symbol: "",
+          amount: 15_000,
+        }),
+        cash("ike", {
+          id: "i2",
+          kind: "purchase",
+          rawType: "Stocks/ETF purchase",
+          time: at("2023-03-01T10:00:00"),
+          comment: "OPEN BUY 20 @ 150",
+          symbol: "PKN.PL",
+          amount: -3_000,
+        }),
+        cash("ike", {
+          id: "i3",
+          kind: "sale",
+          rawType: "Stocks/ETF sale",
+          time: at("2024-05-01T11:00:00"),
+          comment: "CLOSE BUY 20 @ 180",
+          symbol: "PKN.PL",
+          amount: 3_600,
+        }),
+        cash("ike", {
+          id: "i4",
+          kind: "dividend",
+          rawType: "DIVIDENT",
+          time: at("2024-06-15T00:00:00"),
+          comment: "PKN",
+          symbol: "PKN.PL",
+          amount: 180,
+        }),
+        cash("ike", {
+          id: "i5",
+          kind: "withholding_tax",
+          rawType: "Withholding Tax",
+          time: at("2024-06-15T00:00:00"),
+          comment: "PKN",
+          symbol: "PKN.PL",
+          amount: -27,
+        }),
+        cash("ike", {
+          id: "i6",
+          kind: "stock_split",
+          rawType: "Stock split",
+          time: at("2025-01-10T00:00:00"),
+          comment: "Równoważenie akcji",
+          symbol: "PKN.PL",
+          amount: 0,
+        }),
+      ],
+      closedPositions: [],
+    },
+    "ike",
+  );
+}
+
+export function sampleIkzeHistory(): ParsedXtbFile {
+  return stampAccountKind(
+    {
+      sourceName: "przyklad-ikze.csv",
+      accountKind: "ikze",
+      warnings: [],
+      cashOperations: [
+        cash("ikze", {
+          id: "z1",
+          kind: "transfer",
+          rawType: "transfer",
+          time: at("2023-04-01T10:00:00"),
+          comment: "Transfer z rachunku zwykłego",
+          symbol: "",
+          amount: 3_000,
+        }),
+        cash("ikze", {
+          id: "z2",
+          kind: "deposit",
+          rawType: "deposit",
+          time: at("2023-05-02T09:00:00"),
+          comment: "Wpłata IKZE",
+          symbol: "",
+          amount: 5_000,
+        }),
+        cash("ikze", {
+          id: "z3",
+          kind: "purchase",
+          rawType: "Stocks/ETF purchase",
+          time: at("2023-06-01T10:00:00"),
+          comment: "OPEN BUY 10 @ 200",
+          symbol: "PZU.PL",
+          amount: -2_000,
+        }),
+        cash("ikze", {
+          id: "z4",
+          kind: "dividend",
+          rawType: "DIVIDENT",
+          time: at("2024-09-01T00:00:00"),
+          comment: "PZU",
+          symbol: "PZU.PL",
+          amount: 55,
+        }),
+      ],
+      closedPositions: [],
+    },
+    "ikze",
+  );
+}
+
+export function sampleAccounts(): ParsedXtbFile[] {
+  return [sampleXtbHistory(), sampleIkeHistory(), sampleIkzeHistory()];
+}
+
+export const SAMPLE_CASH_CSV = `ID;Type;Time;Comment;Symbol;Amount;;;;
+1;deposit;10.01.2023 10:00:00;Wpłata;;10000,00;;;;
+2;deposit;15.03.2023 09:30:00;Wpłata;;5000,00;;;;
+3;DIVIDENT;20.06.2023 00:00:00;Apple;AAPL.US;85,00;;;;
+4;Withholding Tax;20.06.2023 00:00:00;Apple;AAPL.US;-12,75;;;;
+5;deposit;05.01.2024 11:00:00;Wpłata;;8000,00;;;;
+6;Free-funds Interest 2024-08;30.08.2024 00:00:00;Odsetki;;22,40;;;;
+7;Withdrawal from 1844768;10.11.2024 12:00:00;Wypłata;;-2000,00;;;;
+8;deposit;01.06.2025 08:15:00;Wpłata;;4000,00;;;;
+9;Stocks/ETF purchase;01.03.2023 10:00:00;OPEN BUY 20 @ 150;PKN.PL;-3000,00;;;;
+10;Stocks/ETF sale;01.05.2024 11:00:00;CLOSE BUY 20 @ 180;PKN.PL;3600,00;;;;
+11;Stock split;10.01.2025 00:00:00;Równoważenie akcji;PKN.PL;0,00;;;;
+12;transfer;01.04.2023 10:00:00;Transfer do IKZE;;-3000,00;;;;
+Total;;;;;25094,65;;;;
+`;
+
+export const SAMPLE_TRADES_CSV = `Position;Symbol;Type;Volume;Open time;Close time;Open price;Close price;Commission;Swap;Gross P/L;Comment
+101;EURUSD;buy;0.1;12.01.2023 10:00:00;20.01.2023 16:00:00;1.07000;1.08500;0;-1.2;321.20;
+102;US500;buy;0.05;01.07.2023 09:00:00;01.09.2023 15:00:00;4400;4320;-2.5;0;-147.50;
+103;CDR.PL;buy;10;01.02.2024 10:00:00;12.04.2024 11:20:00;120.00;231.00;-8;0;1108.00;
+104;NVDA.US;buy;2;02.12.2024 14:00:00;14.02.2025 16:00:00;130.00;452.00;-4;0;644.00;
+105;PZU.PL;buy;40;10.07.2025 09:00:00;20.12.2025 15:45:00;45.00;97.65;-6;0;2106.00;
+`;
