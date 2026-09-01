@@ -45,10 +45,40 @@ flowchart TD
 
 ### Wykres
 
-- **Niebieska linia** — kumulatywny kapitał netto: suma wpłat minus suma wypłat (wraz z transferami zewnętrznymi, gdy widok jednego konta).
-- **Zielona linia** — szacowana wartość portfela (wpłaty i zyski zwiększają wartość; wypłaty ją zmniejszają, nie poniżej zera; na końcu zgodna z kartą podsumowania).
+Trzy tryby widoku:
 
-Karta „Aktualny kapitał wpłacony” pokazuje wpłaty minus wypłaty (ujemna wartość na zielono z minusem).
+- **Wartość** (domyślny) — wykres warstwowy: kapitał netto (niebieski) + zysk skumulowany (zielony) = wartość portfela. Kropki: wpłaty (niebieskie), wypłaty (czerwone).
+- **Zysk** — sama linia zysku skumulowanego.
+- **Przepływy** — słupki wpłat i wypłat.
+
+Kapitał netto na wykresie to `max(0, wpłaty − wypłaty)` — bez ujemnych wartości. Saldo przepływów (może być ujemne) w sekcji szczegółów.
+
+Tryb zaawansowany: agregacja dzień/miesiąc/rok + suwak przybliżenia. Przy wielu kontach: opcjonalne linie per konto.
+
+### Karta hero
+
+- **Łączna wartość portfela** — główna liczba (zawsze sensowna wartość inwestycji).
+- Pod spodem: zysk, okres, liczba kont.
+- Obok: wpłacono łącznie / wypłacono łącznie (osobno, bez minusów).
+
+### Karty metryk
+
+- Zysk wyprodukowany (zrealizowany + niezrealizowany)
+- Łączna stopa zwrotu
+- Roczna stopa zwrotu (XIRR)
+- Saldo przepływów (wpłaty − wypłaty, z opisem kontekstowym)
+
+### Szczegóły (rozwijane)
+
+Saldo przepływów, zysk zrealizowany/niezrealizowany, transfery wewnętrzne.
+
+### Wskaźniki szczegółowe
+
+Dywidendy, odsetki, prowizje i opłaty, skuteczność pozycji, średni czas pozycji, okres inwestowania, top symbole, najlepsza/najgorsza pozycja.
+
+### Rozbicie per konto
+
+Mini-karty PLN / IKE / IKZE z wartością portfela i zyskiem (gdy zaznaczono >1 konto).
 
 ### Suma wpłat (w raporcie wewnętrznym)
 

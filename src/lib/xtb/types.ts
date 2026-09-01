@@ -57,10 +57,18 @@ export type ParsedXtbFile = {
 export type ChartPoint = {
   time: number;
   label: string;
-  /** Kumulatywny kapitał netto: wpłaty − wypłaty. */
+  /** Kumulatywny kapitał netto: wpłaty − wypłaty (może być ujemny). */
   netCapital: number;
-  /** Szacowana wartość portfela (jak w karcie podsumowania). */
+  /** Szacowana wartość portfela. */
   portfolioValue: number;
+  /** Kapitał netto na wykresie: max(0, netCapital). */
+  investedCapital: number;
+  /** Zysk skumulowany: portfolioValue − investedCapital. */
+  cumulativeGain: number;
+  /** Wpłata w tym punkcie (0 jeśli brak). */
+  depositDelta: number;
+  /** Wypłata w tym punkcie (0 jeśli brak). */
+  withdrawalDelta: number;
 };
 
 export type AnalyzeOptions = {
@@ -69,6 +77,41 @@ export type AnalyzeOptions = {
 };
 
 export type KindCounts = Partial<Record<CashKind, number>>;
+
+export type SymbolProfit = {
+  symbol: string;
+  profit: number;
+  trades: number;
+};
+
+export type PositionHighlight = {
+  symbol: string;
+  profit: number;
+};
+
+export type PortfolioMetrics = {
+  totalDividends: number;
+  totalInterest: number;
+  totalWithholdingTax: number;
+  totalCommissions: number;
+  totalFeesAndTaxes: number;
+  internalTransferCount: number;
+  winRate: number | null;
+  avgHoldingDays: number | null;
+  bestPosition: PositionHighlight | null;
+  worstPosition: PositionHighlight | null;
+  topSymbols: SymbolProfit[];
+  investingDays: number | null;
+};
+
+export type AccountBreakdown = {
+  kind: AccountKind;
+  portfolioValue: number;
+  totalProfit: number;
+  netDeposits: number;
+  totalDeposits: number;
+  totalWithdrawals: number;
+};
 
 export type PortfolioReport = {
   currency: string;
@@ -90,4 +133,6 @@ export type PortfolioReport = {
   tradeCount: number;
   kindCounts: KindCounts;
   selectedAccounts: AccountKind[];
+  metrics: PortfolioMetrics;
+  accountBreakdown: AccountBreakdown[];
 };

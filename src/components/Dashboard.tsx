@@ -1,19 +1,26 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { analyzePortfolio } from "@/lib/analysis/portfolio";
+import {
+  analyzeAccountBreakdown,
+  analyzePerAccountCharts,
+  analyzePortfolio,
+} from "@/lib/analysis/portfolio";
 import { stampAccountKind } from "@/lib/xtb/account";
 import { mergeParsedFiles } from "@/lib/xtb/merge";
 import { parseXtbFile } from "@/lib/xtb/parse";
 import { sampleAccounts } from "@/lib/xtb/sample";
 import type { AccountKind, ParsedXtbFile } from "@/lib/xtb/types";
+import { AccountBreakdownCards } from "./AccountBreakdownCards";
 import { AccountTabs } from "./AccountTabs";
 import { ExportGuide } from "./ExportGuide";
 import { FileDropzone } from "./FileDropzone";
 import { ImportedFiles } from "./ImportedFiles";
 import { MetricCards } from "./MetricCards";
 import { OperationSummary } from "./OperationSummary";
+import { PerformanceIndicators } from "./PerformanceIndicators";
 import { PortfolioChart } from "./PortfolioChart";
+import { PortfolioDetails } from "./PortfolioDetails";
 import { PortfolioSummary } from "./PortfolioSummary";
 
 const trustPoints = [
@@ -45,6 +52,16 @@ export function Dashboard() {
           })
         : null,
     [merged, activeSelection.length],
+  );
+
+  const accountBreakdown = useMemo(
+    () => (imports.length > 0 ? analyzeAccountBreakdown(imports, activeSelection) : []),
+    [imports, activeSelection],
+  );
+
+  const perAccountCharts = useMemo(
+    () => (imports.length > 0 ? analyzePerAccountCharts(imports, activeSelection) : {}),
+    [imports, activeSelection],
   );
 
   useEffect(() => {
@@ -96,8 +113,8 @@ export function Dashboard() {
               Sprawdź swoje wyniki. Spokojnie i przejrzyście.
             </h1>
             <p className="mt-4 text-base leading-7 text-muted sm:text-lg">
-              Wgraj eksporty z xStation — zwykły, IKE i IKZE możesz dodać razem. Policzysz sumę wpłat,
-              zysk oraz stopy zwrotu, bez logowania.
+              Wgraj eksporty z xStation — zwykły, IKE i IKZE możesz dodać razem. Policzysz wartość
+              portfela, zysk oraz stopy zwrotu, bez logowania.
             </p>
             <ul className="mt-6 flex flex-wrap gap-2">
               {trustPoints.map((point) => (
@@ -186,9 +203,24 @@ export function Dashboard() {
 
           {activeSelection.length > 0 ? <PortfolioSummary report={report} /> : null}
 
-          {activeSelection.length > 0 ? <PortfolioChart data={report.chart} /> : null}
+          {activeSelection.length > 0 ? (
+            <AccountBreakdownCards breakdown={accountBreakdown} />
+          ) : null}
+
+          {activeSelection.length > 0 ? (
+            <PortfolioChart
+              data={report.chart}
+              perAccount={perAccountCharts}
+              visibleAccounts={activeSelection}
+            />
+          ) : null}
 
           {activeSelection.length > 0 ? <MetricCards report={report} /> : null}
+
+          {activeSelection.length > 0 ? <PortfolioDetails report={report} /> : null}
+
+          {activeSelection.length > 0 ? <PerformanceIndicators report={report} /> : null}
+
           <ExportGuide />
         </section>
       ) : null}

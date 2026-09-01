@@ -18,6 +18,9 @@ describe("analyzePortfolio", () => {
     expect(report.chart[0]?.netCapital).toBe(0);
     expect(report.chart.at(-1)?.netCapital).toBe(25_000);
     expect(report.chart.at(-1)?.portfolioValue).toBeCloseTo(25_000 + 4_104.65, 5);
+    expect(report.chart.at(-1)?.investedCapital).toBe(25_000);
+    expect(report.metrics.totalDividends).toBeGreaterThan(0);
+    expect(report.metrics.investingDays).not.toBeNull();
   });
 
   it("nie wlicza kupna, sprzedaży i splitów do wpłat ani zysku", () => {
