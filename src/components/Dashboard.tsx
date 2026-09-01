@@ -7,6 +7,7 @@ import {
   analyzePortfolio,
 } from "@/lib/analysis/portfolio";
 import { stampAccountKind } from "@/lib/xtb/account";
+import { emptyFileNotice, partitionImportedFiles } from "@/lib/xtb/import";
 import { mergeParsedFiles } from "@/lib/xtb/merge";
 import { parseXtbFile } from "@/lib/xtb/parse";
 import { sampleAccounts } from "@/lib/xtb/sample";
@@ -33,6 +34,7 @@ export function Dashboard() {
   const [imports, setImports] = useState<ParsedXtbFile[]>([]);
   const [selected, setSelected] = useState<AccountKind[]>(["standard", "ike", "ikze"]);
   const [error, setError] = useState<string | null>(null);
+  const [importNotices, setImportNotices] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
   const available = useMemo(
@@ -91,22 +93,28 @@ export function Dashboard() {
   async function handleFiles(files: File[]) {
     setBusy(true);
     setError(null);
+    setImportNotices([]);
     try {
       const parsed = await Promise.all(files.map((file) => parseXtbFile(file)));
-      const accepted = parsed.filter(
-        (file) =>
-          file.recognized ||
-          file.cashOperations.length > 0 ||
-          file.closedPositions.length > 0,
-      );
-      const rejected = files.length - accepted.length;
+      const { accepted, skippedEmpty, rejected } = partitionImportedFiles(parsed);
+
       if (accepted.length === 0) {
+        if (skippedEmpty.length > 0) {
+          setImportNotices(skippedEmpty.map((file) => emptyFileNotice(file)));
+          return;
+        }
         setError("Nie znaleziono transakcji XTB w tych plikach. Sprawdź, czy to eksport z xStation.");
         return;
       }
+
       setImports((current) => [...current, ...accepted]);
-      if (rejected > 0) {
-        setError(`Pominięto ${rejected} plik(i) bez rozpoznanej historii XTB.`);
+
+      const notices = skippedEmpty.map((file) => emptyFileNotice(file));
+      if (notices.length > 0) {
+        setImportNotices(notices);
+      }
+      if (rejected.length > 0) {
+        setError(`Pominięto ${rejected.length} plik(i) bez rozpoznanej historii XTB.`);
       }
     } catch {
       setError("Nie udało się odczytać pliku. Spróbuj XLSX albo CSV z xStation.");
@@ -161,6 +169,7 @@ export function Dashboard() {
             onClear={() => {
               setImports([]);
               setError(null);
+              setImportNotices([]);
             }}
           />
 
@@ -170,6 +179,7 @@ export function Dashboard() {
               className="w-fit rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:border-primary hover:text-primary"
               onClick={() => {
                 setError(null);
+                setImportNotices([]);
                 setSelected(["standard", "ike", "ikze"]);
                 setImports(sampleAccounts());
               }}
@@ -187,6 +197,14 @@ export function Dashboard() {
           </div>
 
           {report ? null : <ExportGuide />}
+
+          {importNotices.length > 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              {importNotices.map((notice) => (
+                <p key={notice}>{notice}</p>
+              ))}
+            </div>
+          ) : null}
 
           {error ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-negative">
