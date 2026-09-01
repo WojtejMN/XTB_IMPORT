@@ -130,4 +130,151 @@ describe("parseXlsxBuffer", () => {
     expect(parsed.closedPositions).toHaveLength(1);
     expect(parsed.closedPositions[0].netProfit).toBeCloseTo(320, 5);
   });
+
+  it("czyta nowy eksport xStation: UTC, IKE deposit, Stock sell i Open Positions", () => {
+    const buffer = buildXlsx([
+      {
+        name: "Closed Positions",
+        rows: [
+          ["Account number", "51877991"],
+          [
+            "Instrument",
+            "Ticker",
+            "Category",
+            "Type",
+            "Volume",
+            "Open Price",
+            "Open Time (UTC)",
+            "Close Price",
+            "Close Time (UTC)",
+            "Product",
+            "Profit/Loss",
+            "Gross Profit",
+            "Purchase Value",
+            "Sale Value",
+            "Commission",
+            "Swap",
+            "Rollover",
+            "Position ID",
+            "Comment",
+          ],
+          [
+            "Acme",
+            "ACM.PL",
+            "STOCK",
+            "BUY",
+            2,
+            23.5,
+            44927,
+            31.34,
+            44980,
+            "IKE",
+            15.68,
+            15.68,
+            47,
+            62.68,
+            0,
+            0,
+            0,
+            2582655708,
+            "",
+          ],
+          ["Profit/loss", "", "", "", "", "", "", "", "", "", 15.68],
+        ],
+      },
+      {
+        name: "Cash Operations",
+        rows: [
+          ["Account number", "51877991"],
+          [
+            "Type",
+            "Instrument",
+            "Ticker",
+            "Category",
+            "Time",
+            "Amount",
+            "ID",
+            "Comment",
+            "Product",
+            "Position ID",
+          ],
+          ["IKE deposit", "", "", "", 44900, 2000, "1", "Transfer in", "IKE", ""],
+          ["Stock purchase", "Acme", "ACM.PL", "STOCK", 44910, -47, "2", "OPEN BUY", "IKE", ""],
+          ["Stock sell", "Acme", "ACM.PL", "STOCK", 44980, 62.68, "3", "CLOSE BUY", "IKE", ""],
+          [
+            "Dividend from foreign company on PL market",
+            "Foo",
+            "FOO.PL",
+            "STOCK",
+            44950,
+            10,
+            "4",
+            "Div",
+            "IKE",
+            "",
+          ],
+          [
+            "Tax from dividend from foreign company on PL market",
+            "Foo",
+            "FOO.PL",
+            "STOCK",
+            44950,
+            -1.5,
+            "5",
+            "Tax",
+            "IKE",
+            "",
+          ],
+          ["IKE tax", "", "", "", 44960, -9, "6", "Tax", "IKE", ""],
+          ["Close trade", "GOLD", "GOLD", "CFD", 44970, -3, "7", "Profit of position #9", "IKE", "9"],
+          ["Free funds interest", "", "", "", 44990, 0.24, "8", "Interest", "IKE", ""],
+          ["Total", "", "", "", "", 2012.42, "", "", "", ""],
+        ],
+      },
+      {
+        name: "Open Positions",
+        rows: [
+          ["Account number", "51877991"],
+          ["Product", "Metric", "Amount", "Currency"],
+          ["IKE", "Value", 3784.13, ""],
+          ["IKE", "Profit", 1104.39, ""],
+          ["Note", "Summary values and open positions are shown as of the report generation time"],
+          [
+            "Product",
+            "Instrument/Position",
+            "Ticker",
+            "Category",
+            "Type",
+            "Volume",
+            "Value",
+            "Current price",
+            "Open price",
+            "Open time (UTC)",
+            "Net Profit",
+            "Gross Profit",
+          ],
+          ["IKE", "Acme", "ACM.PL", "STOCK", "BUY", 9, 1210.5, 134.5, 21.08, 44900, 538, 1020],
+        ],
+      },
+    ]);
+
+    const parsed = parseXlsxBuffer(buffer, "IKE_51877991_2026.xlsx");
+    expect(parsed.accountKind).toBe("ike");
+    expect(parsed.recognized).toBe(true);
+    expect(parsed.openProfit).toBeCloseTo(1104.39, 5);
+    expect(parsed.openPositionsValue).toBeCloseTo(3784.13, 5);
+    expect(parsed.closedPositions).toHaveLength(1);
+    expect(parsed.closedPositions[0]?.symbol).toBe("Acme");
+    expect(parsed.closedPositions[0]?.netProfit).toBeCloseTo(15.68, 5);
+    expect(parsed.cashOperations.map((row) => row.kind)).toEqual([
+      "transfer",
+      "purchase",
+      "sale",
+      "dividend",
+      "withholding_tax",
+      "withholding_tax",
+      "profit_loss",
+      "interest",
+    ]);
+  });
 });

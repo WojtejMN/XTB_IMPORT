@@ -18,13 +18,26 @@ export function mergeParsedFiles(
     cashOperations: [],
     closedPositions: [],
     warnings,
+    recognized: false,
+    openProfit: undefined,
+    openPositionsValue: undefined,
   };
+
+  let openProfit = 0;
+  let openPositionsValue = 0;
+  let sawOpenSummary = false;
 
   for (const file of files) {
     if (!allowed.has(file.accountKind)) {
       continue;
     }
     warnings.push(...file.warnings);
+    merged.recognized = Boolean(merged.recognized || file.recognized);
+    if (file.openProfit != null || file.openPositionsValue != null) {
+      sawOpenSummary = true;
+      openProfit += file.openProfit ?? 0;
+      openPositionsValue += file.openPositionsValue ?? 0;
+    }
     for (const operation of file.cashOperations) {
       const key = operationKey(
         file.sourceName,
@@ -51,5 +64,9 @@ export function mergeParsedFiles(
 
   merged.cashOperations.sort((a, b) => a.time.getTime() - b.time.getTime());
   merged.closedPositions.sort((a, b) => a.closeTime.getTime() - b.closeTime.getTime());
+  if (sawOpenSummary) {
+    merged.openProfit = openProfit;
+    merged.openPositionsValue = openPositionsValue;
+  }
   return merged;
 }

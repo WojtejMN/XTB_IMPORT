@@ -1,4 +1,4 @@
-import { isProfitKind } from "../xtb/classify";
+import { duplicatesClosedPositionPnl, isProfitKind, isSubaccountTransfer } from "../xtb/classify";
 import type {
   AccountKind,
   AnalyzeOptions,
@@ -26,11 +26,19 @@ function formatChartLabel(date: Date): string {
 }
 
 function inboundTransfer(operation: CashOperation): boolean {
-  return operation.kind === "transfer" && operation.amount > 0;
+  return (
+    operation.kind === "transfer" &&
+    operation.amount > 0 &&
+    !isSubaccountTransfer(operation.rawType)
+  );
 }
 
 function outboundTransfer(operation: CashOperation): boolean {
-  return operation.kind === "transfer" && operation.amount < 0;
+  return (
+    operation.kind === "transfer" &&
+    operation.amount < 0 &&
+    !isSubaccountTransfer(operation.rawType)
+  );
 }
 
 function buildEvents(
@@ -77,6 +85,13 @@ function buildEvents(
         withdrawalDelta: Math.abs(operation.amount),
         profitDelta: 0,
       });
+      continue;
+    }
+
+    if (
+      parsed.closedPositions.length > 0 &&
+      duplicatesClosedPositionPnl(operation.kind)
+    ) {
       continue;
     }
 
@@ -185,8 +200,14 @@ export function analyzePortfolio(
   const estimatedEquity = netDeposits + realizedProfit;
   const currentValue = options.currentAccountValue;
   const hasCurrentValue = currentValue != null && Number.isFinite(currentValue);
-  const unrealizedProfit = hasCurrentValue ? currentValue - estimatedEquity : 0;
-  const totalProfit = hasCurrentValue ? currentValue - netDeposits : realizedProfit;
+  const openProfit = parsed.openProfit ?? 0;
+  const hasOpenProfit = parsed.openProfit != null && Number.isFinite(parsed.openProfit);
+  const unrealizedProfit = hasCurrentValue
+    ? currentValue - estimatedEquity
+    : hasOpenProfit
+      ? openProfit
+      : 0;
+  const totalProfit = hasCurrentValue ? currentValue - netDeposits : realizedProfit + unrealizedProfit;
 
   const dates = events.map((event) => event.time);
   const firstDate = dates[0] ?? null;
@@ -201,9 +222,11 @@ export function analyzePortfolio(
       deposits: totalDeposits,
       profit: totalProfit,
     });
+  } else if (hasOpenProfit && chart.length > 0) {
+    chart[chart.length - 1].profit = totalProfit;
   }
 
-  const terminalValue = hasCurrentValue ? currentValue : estimatedEquity;
+  const terminalValue = hasCurrentValue ? currentValue : estimatedEquity + unrealizedProfit;
   const terminalForXirr = lastDate ?? new Date();
   const annualReturn =
     firstDate && lastDate

@@ -1,7 +1,7 @@
 import { unzipSync } from "fflate";
 import { XMLParser } from "fast-xml-parser";
 import { detectAccountKind, previewFromRows, stampAccountKind } from "./account";
-import { parseTableRows } from "./parse-table";
+import { parseOpenPositionsSummary, parseTableRows } from "./parse-table";
 import type { ClosedPosition, CashOperation, ParsedXtbFile } from "./types";
 
 const xmlParser = new XMLParser({
@@ -149,6 +149,20 @@ function workbookSheets(
   });
 }
 
+function sheetKind(name: string): "cash" | "closed" | "open" | "unknown" {
+  const normalized = name.toLowerCase();
+  if (normalized.includes("open position")) {
+    return "open";
+  }
+  if (normalized.includes("closed position")) {
+    return "closed";
+  }
+  if (normalized.includes("cash")) {
+    return "cash";
+  }
+  return "unknown";
+}
+
 export function parseXlsxBuffer(buffer: ArrayBuffer, sourceName: string): ParsedXtbFile {
   const files = unzipSync(new Uint8Array(buffer));
   const warnings: string[] = [];
@@ -158,6 +172,10 @@ export function parseXlsxBuffer(buffer: ArrayBuffer, sourceName: string): Parsed
   const sheets = workbookSheets(files);
   const cashOperations: CashOperation[] = [];
   const closedPositions: ClosedPosition[] = [];
+  let openProfit = 0;
+  let openPositionsValue = 0;
+  let recognized = false;
+  let sawOpenSummary = false;
 
   for (const sheet of sheets) {
     const xml = decode(files, sheet.path);
@@ -176,13 +194,47 @@ export function parseXlsxBuffer(buffer: ArrayBuffer, sourceName: string): Parsed
       continue;
     }
     const rows = parseSheetRows(xml, sharedStrings);
-    const table = parseTableRows(rows, `${sourceName} / ${sheet.name}`, warnings, accountKind);
-    cashOperations.push(...table.cashOperations);
-    closedPositions.push(...table.closedPositions);
+    const kind = sheetKind(sheet.name);
+
+    if (kind === "open") {
+      const summary = parseOpenPositionsSummary(rows);
+      if (summary) {
+        recognized = true;
+        sawOpenSummary = true;
+        openProfit += summary.profit;
+        openPositionsValue += summary.value;
+      }
+      continue;
+    }
+
+    const sheetWarnings: string[] = [];
+    const allowCash = kind === "cash" || kind === "unknown";
+    const allowClosed = kind === "closed" || kind === "unknown";
+    const table = parseTableRows(rows, `${sourceName} / ${sheet.name}`, sheetWarnings, accountKind);
+
+    if (kind !== "unknown") {
+      recognized = true;
+    }
+    if (table.foundHeader) {
+      recognized = true;
+    }
+
+    if (allowCash) {
+      cashOperations.push(...table.cashOperations);
+    }
+    if (allowClosed) {
+      closedPositions.push(...table.closedPositions);
+    }
+
+    if (kind === "unknown" && !table.foundHeader) {
+      warnings.push(...sheetWarnings);
+    }
   }
 
-  if (cashOperations.length === 0 && closedPositions.length === 0) {
+  if (!recognized && cashOperations.length === 0 && closedPositions.length === 0) {
     warnings.push("Plik XLSX nie zawiera rozpoznawalnej historii XTB.");
+  } else if (cashOperations.length === 0 && closedPositions.length === 0) {
+    warnings.push(`Plik ${sourceName} nie zawiera operacji — konto może być puste.`);
   }
 
   return stampAccountKind(
@@ -192,6 +244,9 @@ export function parseXlsxBuffer(buffer: ArrayBuffer, sourceName: string): Parsed
       cashOperations,
       closedPositions,
       warnings,
+      recognized,
+      openProfit: sawOpenSummary ? openProfit : undefined,
+      openPositionsValue: sawOpenSummary ? openPositionsValue : undefined,
     },
     accountKind,
   );

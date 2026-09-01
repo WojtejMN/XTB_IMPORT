@@ -63,22 +63,27 @@ Struktura:
 
 Obsługiwane wejście:
 
-1. XLSX z xStation — arkusze `CASH OPERATION HISTORY` i `CLOSED POSITION HISTORY`
+1. XLSX z xStation — arkusze `Cash Operations` / `Closed Positions` / `Open Positions`
+   albo starsze `CASH OPERATION HISTORY` i `CLOSED POSITION HISTORY`
 2. CSV tych samych tabel (`;` albo `,`, UTF-8, ewentualnie BOM)
 
 Zasady parsera:
 
 - Szukaj wiersza nagłówka w pierwszych ~40 wierszach. Nie zakładaj, że tabela
   zaczyna się od wiersza 1 (XTB dopisuje metadane nad tabelą).
-- Mapuj kolumny po nazwie, nie po indeksie. Aliasuj angielski i polski.
-- Pomijaj wiersz `Total` / `Suma`.
+- Mapuj kolumny po nazwie, nie po indeksie. Aliasuj angielski i polski,
+  także `Close Time (UTC)` i `Profit/Loss`.
+- Pomijaj wiersz `Total` / `Suma` oraz stopkę `Profit/loss` w pozycjach.
 - Typy kasowe: `deposit`, `withdrawal` (także z sufiksem numeru konta),
-  `DIVIDENT` (literówka XTB), `Withholding Tax`, `Free-funds Interest`, podatki
-  od odsetek.
+  `DIVIDENT` (literówka XTB), `Withholding Tax`, `Free-funds Interest` /
+  `Free funds interest`, `IKE deposit` / `IKE return` / `IKE tax`,
+  `Stock purchase` / `Stock sell`, `Close trade`.
+- Nazwa pliku `PLN_…` / `IKE_…` / `IKZE_…` ustala typ konta; treść `IKE deposit`
+  na rachunku zwykłym nie może przerobić go na IKE.
+- Nie parsuj arkusza Open Positions jako zamkniętych transakcji.
 - Wpłata/wypłata: bierz `abs(amount)` i znak z klasyfikacji typu, bo XTB bywa
   niekonsekwentny ze znakiem.
-- Net P/L pozycji = `Gross P/L + Commission + Swap + Rollover`, chyba że plik
-  ma tylko kolumnę `Profit`.
+- Net P/L pozycji = kolumna `Profit/Loss` albo `Gross P/L + Commission + Swap + Rollover`.
 - Daty: `DD.MM.YYYY[ HH:mm:ss]`, ISO, serial Excela.
 
 Zmiana parsera wymaga testu na fixturze zbliżonej do prawdziwego eksportu.

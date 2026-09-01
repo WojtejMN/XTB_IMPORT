@@ -1,5 +1,5 @@
 import { detectAccountKind, previewFromRows, stampAccountKind } from "./account";
-import { classifyCashType, isIgnorableRow } from "./classify";
+import { classifyCashType, isFooterLabel, isIgnorableRow } from "./classify";
 import {
   findHeader,
   getCell,
@@ -8,7 +8,7 @@ import {
   type ColumnMap,
 } from "./headers";
 import type { AccountKind, CashOperation, ClosedPosition, ParsedXtbFile } from "./types";
-import { cellText, parseAmount, parseDate } from "./values";
+import { cellText, normalizeHeader, parseAmount, parseDate } from "./values";
 
 function decodeText(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -106,35 +106,39 @@ function parseTradeRows(
   for (let index = startIndex; index < rows.length; index += 1) {
     const row = rows[index] ?? [];
     const symbol = cellText(getCell(row, map, "symbol"));
-    const closeTime =
-      parseDate(getCell(row, map, "closeTime")) ?? parseDate(getCell(row, map, "openTime"));
+    if (isFooterLabel(symbol) || isFooterLabel(cellText(getCell(row, map, "type")))) {
+      continue;
+    }
+    const closeTime = parseDate(getCell(row, map, "closeTime"));
+    const openTime = parseDate(getCell(row, map, "openTime"));
+    // New xStation "Open Positions" has open time and P/L but no close time.
+    // Only fall back to open time when the closed-positions table has no close column.
+    const time = closeTime ?? (map.closeTime == null ? openTime : null);
     const gross = parseAmount(getCell(row, map, "grossProfit"));
     const netColumn = parseAmount(getCell(row, map, "netProfit"));
     const commission = parseAmount(getCell(row, map, "commission")) ?? 0;
     const swap = parseAmount(getCell(row, map, "swap")) ?? 0;
     const rollover = parseAmount(getCell(row, map, "rollover")) ?? 0;
 
-    if (!symbol || !closeTime) {
-      continue;
-    }
-
-    const grossProfit = gross ?? (netColumn != null ? netColumn - commission - swap - rollover : null);
-    if (grossProfit == null && netColumn == null) {
+    if (!symbol || !time) {
       continue;
     }
 
     const netProfit =
-      netColumn != null && gross == null
-        ? netColumn
-        : (grossProfit ?? 0) + commission + swap + rollover;
+      netColumn ?? (gross != null ? gross + commission + swap + rollover : null);
+    if (netProfit == null) {
+      continue;
+    }
+
+    const grossProfit = gross ?? netProfit - commission - swap - rollover;
 
     positions.push({
       position: cellText(getCell(row, map, "position")) || String(index),
       symbol,
       type: cellText(getCell(row, map, "type")),
       volume: parseAmount(getCell(row, map, "volume")),
-      openTime: parseDate(getCell(row, map, "openTime")),
-      closeTime,
+      openTime,
+      closeTime: time,
       commission,
       swap,
       rollover,
@@ -153,7 +157,7 @@ export function parseTableRows(
   sourceName: string,
   warnings: string[] = [],
   accountKind: AccountKind = "standard",
-): Pick<ParsedXtbFile, "cashOperations" | "closedPositions"> {
+): Pick<ParsedXtbFile, "cashOperations" | "closedPositions"> & { foundHeader: boolean } {
   const cashHeader = findHeader(rows, isCashHeader);
   const tradeHeader = findHeader(rows, isTradeHeader);
 
@@ -164,11 +168,69 @@ export function parseTableRows(
     ? parseTradeRows(rows, tradeHeader.map, tradeHeader.index + 1, accountKind)
     : [];
 
-  if (!cashHeader && !tradeHeader) {
+  const foundHeader = Boolean(cashHeader || tradeHeader);
+  if (!foundHeader) {
     warnings.push(`Nie rozpoznano nagłówków XTB w pliku ${sourceName}.`);
   }
 
-  return { cashOperations, closedPositions };
+  return { cashOperations, closedPositions, foundHeader };
+}
+
+function headerLabel(value: unknown): string {
+  return normalizeHeader(cellText(value))
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function parseOpenPositionsSummary(rows: unknown[][]): { value: number; profit: number } | null {
+  const limit = Math.min(rows.length, 40);
+  let headerIndex = -1;
+  let metricIndex = 1;
+  let amountIndex = 2;
+
+  for (let index = 0; index < limit; index += 1) {
+    const row = rows[index] ?? [];
+    const labels = row.map(headerLabel);
+    const metric = labels.indexOf("metric");
+    const amount = labels.findIndex((label) => label === "amount" || label === "value");
+    const product = labels.indexOf("product");
+    if (product >= 0 && metric >= 0 && amount >= 0) {
+      headerIndex = index;
+      metricIndex = metric;
+      amountIndex = amount;
+      break;
+    }
+  }
+
+  if (headerIndex < 0) {
+    return null;
+  }
+
+  let value = 0;
+  let profit = 0;
+  let sawMetric = false;
+
+  for (let index = headerIndex + 1; index < rows.length; index += 1) {
+    const row = rows[index] ?? [];
+    const metric = headerLabel(row[metricIndex]);
+    if (!metric || metric === "note" || metric === "product") {
+      break;
+    }
+    const amount = parseAmount(row[amountIndex]);
+    if (amount == null) {
+      continue;
+    }
+    if (metric === "value") {
+      value += amount;
+      sawMetric = true;
+    } else if (metric === "profit") {
+      profit += amount;
+      sawMetric = true;
+    }
+  }
+
+  return sawMetric ? { value, profit } : null;
 }
 
 export function parseCsvText(text: string, sourceName = "import.csv"): ParsedXtbFile {
@@ -185,7 +247,9 @@ export function parseCsvText(text: string, sourceName = "import.csv"): ParsedXtb
       sourceName,
       accountKind,
       warnings,
-      ...parsed,
+      cashOperations: parsed.cashOperations,
+      closedPositions: parsed.closedPositions,
+      recognized: parsed.foundHeader,
     },
     accountKind,
   );

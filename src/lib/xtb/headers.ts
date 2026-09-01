@@ -26,24 +26,27 @@ const HEADER_ALIASES: Record<ColumnRole, string[]> = {
   comment: ["comment", "komentarz", "description", "opis"],
   symbol: ["symbol", "instrument", "ticker"],
   amount: ["amount", "kwota", "value", "wartosc", "suma"],
-  position: ["position", "pozycja", "ticket", "order"],
+  position: ["position", "pozycja", "ticket", "order", "position id"],
   volume: ["volume", "wolumen", "lots"],
-  openTime: ["open time", "openTime", "czas otwarcia", "open date"],
-  closeTime: ["close time", "closeTime", "czas zamkniecia", "czas zamknięcia", "close date"],
+  openTime: ["open time", "openTime", "czas otwarcia", "open date", "open time utc"],
+  closeTime: ["close time", "closeTime", "czas zamkniecia", "czas zamknięcia", "close date", "close time utc"],
   openPrice: ["open price", "cena otwarcia"],
   closePrice: ["close price", "cena zamkniecia", "cena zamknięcia", "market price"],
   commission: ["commission", "prowizja"],
   swap: ["swap"],
   rollover: ["rollover"],
   grossProfit: ["gross p/l", "gross pl", "gross p l", "gross profit"],
-  netProfit: ["profit", "zysk", "net p/l", "net pl", "net profit"],
+  netProfit: ["profit", "zysk", "net p/l", "net pl", "net profit", "profit loss", "profit/loss"],
 };
 
 function canonicalize(value: string): string {
   return normalizeHeader(value)
+    .replace(/\([^)]*\)/g, " ")
     .normalize("NFD")
     .replace(/\p{M}/gu, "")
-    .replace(/ł/g, "l");
+    .replace(/ł/g, "l")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function roleForHeader(header: string): ColumnRole | null {

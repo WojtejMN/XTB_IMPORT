@@ -18,17 +18,30 @@ describe("classifyCashType", () => {
     expect(classifyCashType("Withholding Tax")).toBe("withholding_tax");
     expect(classifyCashType("Free-funds Interest 2024-01")).toBe("interest");
     expect(classifyCashType("Free-funds Interest Tax 2024-01")).toBe("interest_tax");
+    expect(classifyCashType("Free funds interest")).toBe("interest");
+    expect(classifyCashType("Free funds interest tax")).toBe("interest_tax");
+    expect(classifyCashType("Dividend from foreign company on PL market")).toBe("dividend");
+    expect(classifyCashType("Tax from dividend from foreign company on PL market")).toBe(
+      "withholding_tax",
+    );
+    expect(classifyCashType("IKE tax")).toBe("withholding_tax");
   });
 
   it("rozpoznaje transfery, kupna, sprzedaży i splity", () => {
     expect(classifyCashType("transfer")).toBe("transfer");
+    expect(classifyCashType("IKE deposit")).toBe("transfer");
+    expect(classifyCashType("IKE return partial")).toBe("transfer");
+    expect(classifyCashType("Subaccount transfer")).toBe("transfer");
     expect(classifyCashType("Stocks/ETF purchase")).toBe("purchase");
+    expect(classifyCashType("Stock purchase")).toBe("purchase");
     expect(classifyCashType("Stocks/ETF sale")).toBe("sale");
+    expect(classifyCashType("Stock sell")).toBe("sale");
     expect(classifyCashType("Kupno akcji")).toBe("purchase");
     expect(classifyCashType("Sprzedaż akcji")).toBe("sale");
     expect(classifyCashType("Stock split")).toBe("stock_split");
     expect(classifyCashType("Równoważenie akcji")).toBe("stock_split");
     expect(classifyCashType("spin off")).toBe("dividend");
+    expect(classifyCashType("Close trade")).toBe("profit_loss");
   });
 
   it("pomija wiersz Total", () => {
@@ -42,6 +55,17 @@ describe("detectAccountKind", () => {
     expect(detectAccountKind("historia-ikze.xlsx")).toBe("ikze");
     expect(detectAccountKind("XTB_IKE_2024.csv")).toBe("ike");
     expect(detectAccountKind("cash-operations.xlsx")).toBe("standard");
+  });
+
+  it("nie myli zwykłego rachunku PLN z IKE tylko dlatego, że jest transfer IKE deposit", () => {
+    expect(
+      detectAccountKind(
+        "PLN_50746360_2006-01-01.xlsx",
+        "Type Instrument Time Amount IKE deposit Transfer out operation",
+      ),
+    ).toBe("standard");
+    expect(detectAccountKind("IKE_51877991.xlsx", "Stock purchase")).toBe("ike");
+    expect(detectAccountKind("IKZE_52516643.xlsx")).toBe("ikze");
   });
 });
 

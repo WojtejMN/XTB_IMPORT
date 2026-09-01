@@ -10,8 +10,11 @@ const ORDER: CashKind[] = [
   "dividend",
   "stock_split",
   "interest",
+  "interest_tax",
   "withholding_tax",
   "commission",
+  "swap",
+  "profit_loss",
   "other",
 ];
 

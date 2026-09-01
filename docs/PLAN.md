@@ -52,7 +52,10 @@ Suma wszystkich operacji sklasyfikowanych jako `deposit`. Wypłaty **nie** pomni
 zysk = Σ Net P/L zamkniętych pozycji
      + dywidendy + odsetki
      + withholding tax (ujemny)
-     + inne przepływy kasowe poza wpłatą i wypłatą
+     + inne przepływy kasowe poza wpłatą, wypłatą, kupnem i sprzedażą
+     + Profit z Open Positions (niezrealizowany)
+
+`Close trade` w cash nie doliczamy, gdy jest arkusz zamkniętych pozycji.
 ```
 
 `Net P/L = Gross P/L + prowizja + swap + rollover`
@@ -90,14 +93,21 @@ Kapitał netto = suma wpłat − suma wypłat.
 
 xStation: Historia konta → Eksportuj jako XLSX.
 
+Aktualny eksport (2026):
+
 | Arkusz | Kluczowe kolumny |
 | --- | --- |
-| CASH OPERATION HISTORY | ID, Type, Time, Comment, Symbol, Amount |
-| CLOSED POSITION HISTORY | Symbol, Type, Open/Close time, Commission, Swap, Gross P/L |
+| Cash Operations | Type, Time, Amount, Comment, Ticker, Position ID |
+| Closed Positions | Instrument/Ticker, Open/Close Time (UTC), Profit/Loss, Gross Profit |
+| Open Positions | podsumowanie Product / Metric / Amount (Value, Profit) |
 
-Typy kasowe (case-insensitive, tolerowane sufiksy): `deposit`, `withdrawal`, `DIVIDENT`, `Withholding Tax`, `Free-funds Interest`, podatki od odsetek.
+Starszy eksport: `CASH OPERATION HISTORY`, `CLOSED POSITION HISTORY`.
 
-Parser skanuje nagłówki zamiast zakładać stałe kolumny — eksport XTB zmieniał układ.
+Parser skanuje nagłówki zamiast zakładać stałe kolumny. Aliasuje `Close Time (UTC)` i `Profit/Loss`.
+
+Typy kasowe (case-insensitive): `Deposit`, `Withdrawal`, `IKE deposit` / `IKE return` / `IKZE deposit` (transfer między kontami), `Stock purchase` / `Stock sell`, `Dividend`, `Withholding tax`, `Tax from dividend…`, `IKE tax`, `Free funds interest`, `Close trade`, `Swap`, `Subaccount transfer`.
+
+`Close trade` i kasowy `Swap` są pomijane w zysku, gdy arkusz zamkniętych pozycji już zawiera P/L (żeby nie liczyć dwa razy). Transfer subkonta nigdy nie jest wpłatą inwestora. Wynik otwartych pozycji z arkusza Open Positions doliczamy jako zysk niezrealizowany, dopóki użytkownik nie poda salda ręcznie.
 
 ## Stack (aktualny na 2026)
 
@@ -124,7 +134,7 @@ Parser skanuje nagłówki zamiast zakładać stałe kolumny — eksport XTB zmie
 - XTB znowu zmieni nazwy arkuszy/kolumn → mapowanie po aliasach + test na fixturze
 - Brak zamkniętych pozycji w CSV → ostrzeżenie, zysk tylko z cash
 - XIRR bez przeciwnych przepływów → pokazujemy „—”
-- Saldo otwartych pozycji nie jest w eksporcie historii → pole opcjonalne
+- Saldo otwartych pozycji: pole opcjonalne; jeśli plik ma arkusz Open Positions, bierzemy z niego Profit
 
 ## Później (nie teraz)
 

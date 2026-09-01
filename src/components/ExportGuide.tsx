@@ -13,9 +13,15 @@ export function ExportGuide() {
           <strong className="text-foreground">Eksportuj jako XLSX</strong>.
         </li>
         <li>
-          W pliku powinny być arkusze{" "}
-          <code className="rounded bg-primary-soft px-1 text-foreground">CASH OPERATION HISTORY</code> oraz{" "}
-          <code className="rounded bg-primary-soft px-1 text-foreground">CLOSED POSITION HISTORY</code>.
+          W pliku powinny być arkusze historii kasowej i pozycji. xStation nazywa je{" "}
+          <code className="rounded bg-primary-soft px-1 text-foreground">Cash Operations</code> i{" "}
+          <code className="rounded bg-primary-soft px-1 text-foreground">Closed Positions</code>
+          {" "}albo starszymi nazwami{" "}
+          <code className="rounded bg-primary-soft px-1 text-foreground">CASH OPERATION HISTORY</code> i{" "}
+          <code className="rounded bg-primary-soft px-1 text-foreground">CLOSED POSITION HISTORY</code>
+          . Arkusz{" "}
+          <code className="rounded bg-primary-soft px-1 text-foreground">Open Positions</code> jest
+          opcjonalny — z niego bierzemy wynik otwartych pozycji.
         </li>
         <li>Możesz wgrać kilka plików naraz — np. osobny eksport dla portfela zwykłego, IKE i IKZE.</li>
       </ol>

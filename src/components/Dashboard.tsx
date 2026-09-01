@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { analyzePortfolio } from "@/lib/analysis/portfolio";
+import { formatPln } from "@/lib/format";
 import { stampAccountKind } from "@/lib/xtb/account";
 import { mergeParsedFiles } from "@/lib/xtb/merge";
 import { parseXtbFile } from "@/lib/xtb/parse";
@@ -41,7 +42,7 @@ export function Dashboard() {
   const currentAccountValue = parseAmount(currentValue) ?? undefined;
   const report = useMemo(
     () =>
-      merged && (merged.cashOperations.length > 0 || merged.closedPositions.length > 0)
+      merged
         ? analyzePortfolio(merged, {
             currentAccountValue:
               currentAccountValue != null && currentAccountValue >= 0
@@ -66,7 +67,10 @@ export function Dashboard() {
     try {
       const parsed = await Promise.all(files.map((file) => parseXtbFile(file)));
       const accepted = parsed.filter(
-        (file) => file.cashOperations.length > 0 || file.closedPositions.length > 0,
+        (file) =>
+          file.recognized ||
+          file.cashOperations.length > 0 ||
+          file.closedPositions.length > 0,
       );
       const rejected = files.length - accepted.length;
       if (accepted.length === 0) {
@@ -201,7 +205,14 @@ export function Dashboard() {
               onChange={(event) => setCurrentValue(event.target.value)}
               className="rounded-xl border border-border bg-surface px-3 py-2.5 text-base text-foreground outline-none ring-primary/15 focus:border-primary focus:ring-4"
             />
-            <span>Jeśli podasz saldo z xStation, zysk i XIRR uwzględnią otwarte pozycje.</span>
+            <span>
+              Jeśli podasz saldo z xStation, zysk i XIRR uwzględnią gotówkę i otwarte pozycje.
+              {merged?.openProfit
+                ? ` Z pliku: niezrealizowany wynik otwartych pozycji ${formatPln(merged.openProfit)}.`
+                : merged?.openPositionsValue
+                  ? " W wgranym eksporcie nie ma otwartego wyniku do doliczenia."
+                  : ""}
+            </span>
           </label>
 
           {activeSelection.length > 0 ? <MetricCards report={report} /> : null}

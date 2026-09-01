@@ -54,4 +54,91 @@ describe("analyzePortfolio", () => {
     expect(withValue.unrealizedProfit).toBeCloseTo(5_000 - withoutValue.realizedProfit, 5);
     expect(withValue.annualReturn).not.toBe(withoutValue.annualReturn);
   });
+
+  it("dolicza zysk z otwartych pozycji i nie dubluje Close trade ani subkont", () => {
+    const parsed = {
+      sourceName: "IKE_test.xlsx",
+      accountKind: "ike" as const,
+      warnings: [],
+      recognized: true,
+      openProfit: 1104.39,
+      cashOperations: [
+        {
+          id: "1",
+          kind: "deposit" as const,
+          rawType: "Deposit",
+          time: new Date("2024-01-10T10:00:00"),
+          comment: "Wpłata",
+          symbol: "",
+          amount: 1000,
+          accountKind: "ike" as const,
+        },
+        {
+          id: "2",
+          kind: "transfer" as const,
+          rawType: "IKE deposit",
+          time: new Date("2024-02-01T10:00:00"),
+          comment: "Transfer in",
+          symbol: "",
+          amount: 2000,
+          accountKind: "ike" as const,
+        },
+        {
+          id: "3",
+          kind: "transfer" as const,
+          rawType: "Subaccount transfer",
+          time: new Date("2024-03-01T10:00:00"),
+          comment: "Internal",
+          symbol: "",
+          amount: 500,
+          accountKind: "ike" as const,
+        },
+        {
+          id: "4",
+          kind: "transfer" as const,
+          rawType: "Subaccount transfer",
+          time: new Date("2024-03-01T10:00:00"),
+          comment: "Internal",
+          symbol: "",
+          amount: -500,
+          accountKind: "ike" as const,
+        },
+        {
+          id: "5",
+          kind: "profit_loss" as const,
+          rawType: "Close trade",
+          time: new Date("2024-04-01T10:00:00"),
+          comment: "Profit of position #1",
+          symbol: "GOLD",
+          amount: -3,
+          accountKind: "ike" as const,
+        },
+      ],
+      closedPositions: [
+        {
+          position: "1",
+          symbol: "GOLD",
+          type: "BUY",
+          volume: 0.1,
+          openTime: new Date("2024-03-01T10:00:00"),
+          closeTime: new Date("2024-04-01T10:00:00"),
+          commission: 0,
+          swap: 0,
+          rollover: 0,
+          grossProfit: 15.68,
+          netProfit: 15.68,
+          comment: "",
+          accountKind: "ike" as const,
+        },
+      ],
+    };
+
+    const report = analyzePortfolio(parsed, { treatTransfersAsExternal: true });
+    expect(report.totalDeposits).toBe(3000);
+    expect(report.totalWithdrawals).toBe(0);
+    expect(report.realizedProfit).toBeCloseTo(15.68, 5);
+    expect(report.unrealizedProfit).toBeCloseTo(1104.39, 5);
+    expect(report.totalProfit).toBeCloseTo(15.68 + 1104.39, 5);
+    expect(report.chart.at(-1)?.profit).toBeCloseTo(15.68 + 1104.39, 5);
+  });
 });

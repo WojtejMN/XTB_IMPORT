@@ -15,7 +15,13 @@ const RULES: { kind: CashKind; match: (value: string) => boolean }[] = [
     match: (value) =>
       value.includes("withholding tax") ||
       value.includes("podatek u zrodla") ||
-      value.includes("dividend tax"),
+      value.includes("dividend tax") ||
+      value.includes("tax from dividend") ||
+      value.includes("podatek od dywidend") ||
+      value === "ike tax" ||
+      value === "ikze tax" ||
+      value.endsWith(" ike tax") ||
+      value.endsWith(" ikze tax"),
   },
   {
     kind: "interest_tax",
@@ -23,6 +29,7 @@ const RULES: { kind: CashKind; match: (value: string) => boolean }[] = [
       value.includes("interest tax") ||
       value.includes("podatek od odsetek") ||
       value.includes("free-funds interest tax") ||
+      value.includes("free funds interest tax") ||
       value.includes("free funds interests tax"),
   },
   {
@@ -60,16 +67,25 @@ const RULES: { kind: CashKind; match: (value: string) => boolean }[] = [
     match: (value) =>
       value.includes("stocks/etf sale") ||
       value.includes("stock/etf sale") ||
+      value.includes("stock sell") ||
+      value.includes("stocks sell") ||
       value.includes("sprzedaz") ||
       value.includes("acoes/etf vende") ||
-      (value.includes("sale") && !value.includes("wholesale")),
+      (value.includes("sale") && !value.includes("wholesale")) ||
+      (value.includes("sell") && (value.includes("stock") || value.includes("etf") || value.includes("akcj"))),
   },
   {
     kind: "transfer",
     match: (value) =>
       value.includes("transfer") ||
       value.includes("przelew") ||
-      value.includes("przenies"),
+      value.includes("przenies") ||
+      value.includes("ike deposit") ||
+      value.includes("ikze deposit") ||
+      value.includes("ike return") ||
+      value.includes("ikze return") ||
+      value.includes("wplata ike") ||
+      value.includes("wplata ikze"),
   },
   {
     kind: "deposit",
@@ -106,7 +122,10 @@ const RULES: { kind: CashKind; match: (value: string) => boolean }[] = [
       value.includes("profit/loss") ||
       value.includes("profit & loss") ||
       value.includes("zysk/strata") ||
-      value.includes("wynik zamkniecia"),
+      value.includes("wynik zamkniecia") ||
+      value.includes("close trade") ||
+      value.includes("zamkniecie transakcji") ||
+      value.includes("zamkniecie pozycji"),
   },
 ];
 
@@ -122,6 +141,24 @@ export function classifyCashType(rawType: string): CashKind {
 export function isIgnorableRow(rawType: string): boolean {
   const value = normalizeType(rawType);
   return value === "total" || value === "suma" || value === "sum";
+}
+
+export function isFooterLabel(value: string): boolean {
+  const normalized = normalizeType(value);
+  return (
+    isIgnorableRow(normalized) ||
+    normalized === "profit/loss" ||
+    normalized === "profit loss" ||
+    normalized === "note"
+  );
+}
+
+export function isSubaccountTransfer(rawType: string): boolean {
+  return normalizeType(rawType).includes("subaccount");
+}
+
+export function duplicatesClosedPositionPnl(kind: CashKind): boolean {
+  return kind === "profit_loss" || kind === "swap";
 }
 
 export function isProfitKind(kind: CashKind): boolean {

@@ -49,6 +49,9 @@ export type ParsedXtbFile = {
   cashOperations: CashOperation[];
   closedPositions: ClosedPosition[];
   warnings: string[];
+  recognized?: boolean;
+  openProfit?: number;
+  openPositionsValue?: number;
 };
 
 export type ChartPoint = {
