@@ -18,6 +18,9 @@ describe("analyzePortfolio", () => {
     expect(report.chart[0]?.netCapital).toBe(0);
     expect(report.chart.at(-1)?.netCapital).toBe(25_000);
     expect(report.chart.at(-1)?.portfolioValue).toBeCloseTo(25_000 + 4_104.65, 5);
+    expect(report.chart.at(-1)?.investedCapital).toBe(25_000);
+    expect(report.metrics.totalDividends).toBeGreaterThan(0);
+    expect(report.metrics.investingDays).not.toBeNull();
   });
 
   it("nie wlicza kupna, sprzedaży i splitów do wpłat ani zysku", () => {
@@ -54,6 +57,20 @@ describe("analyzePortfolio", () => {
     expect(withValue.totalProfit).toBe(5_000);
     expect(withValue.unrealizedProfit).toBeCloseTo(5_000 - withoutValue.realizedProfit, 5);
     expect(withValue.annualReturn).not.toBe(withoutValue.annualReturn);
+  });
+
+  it("wykres i wartość portfela różnią się między kontami", () => {
+    const imports = sampleAccounts();
+    const standard = analyzePortfolio(mergeParsedFiles(imports, ["standard"]), {
+      treatTransfersAsExternal: true,
+    });
+    const ike = analyzePortfolio(mergeParsedFiles(imports, ["ike"]), {
+      treatTransfersAsExternal: true,
+    });
+
+    expect(standard.portfolioValue).not.toBe(ike.portfolioValue);
+    expect(standard.chart.at(-1)?.portfolioValue).not.toBe(ike.chart.at(-1)?.portfolioValue);
+    expect(standard.totalDeposits).not.toBe(ike.totalDeposits);
   });
 
   it("nie pokazuje ujemnej wartości portfela po wypłatach przekraczających wpłaty", () => {

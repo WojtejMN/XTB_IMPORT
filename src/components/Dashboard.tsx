@@ -1,19 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { analyzePortfolio } from "@/lib/analysis/portfolio";
+import {
+  analyzeAccountBreakdown,
+  analyzePerAccountCharts,
+  analyzePortfolio,
+} from "@/lib/analysis/portfolio";
 import { stampAccountKind } from "@/lib/xtb/account";
+import { emptyFileNotice, partitionImportedFiles } from "@/lib/xtb/import";
 import { mergeParsedFiles } from "@/lib/xtb/merge";
 import { parseXtbFile } from "@/lib/xtb/parse";
 import { sampleAccounts } from "@/lib/xtb/sample";
 import type { AccountKind, ParsedXtbFile } from "@/lib/xtb/types";
+import { AccountBreakdownCards } from "./AccountBreakdownCards";
 import { AccountTabs } from "./AccountTabs";
 import { ExportGuide } from "./ExportGuide";
 import { FileDropzone } from "./FileDropzone";
 import { ImportedFiles } from "./ImportedFiles";
 import { MetricCards } from "./MetricCards";
 import { OperationSummary } from "./OperationSummary";
+import { PerformanceIndicators } from "./PerformanceIndicators";
 import { PortfolioChart } from "./PortfolioChart";
+import { PortfolioDetails } from "./PortfolioDetails";
 import { PortfolioSummary } from "./PortfolioSummary";
 
 const trustPoints = [
@@ -26,16 +34,21 @@ export function Dashboard() {
   const [imports, setImports] = useState<ParsedXtbFile[]>([]);
   const [selected, setSelected] = useState<AccountKind[]>(["standard", "ike", "ikze"]);
   const [error, setError] = useState<string | null>(null);
+  const [importNotices, setImportNotices] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
   const available = useMemo(
     () => [...new Set(imports.map((file) => file.accountKind))],
     [imports],
   );
-  const activeSelection = selected.filter((kind) => available.includes(kind));
+  const activeSelection = useMemo(
+    () => selected.filter((kind) => available.includes(kind)),
+    [selected, available],
+  );
+  const selectionKey = activeSelection.slice().sort().join(",");
   const merged = useMemo(
     () => (imports.length > 0 ? mergeParsedFiles(imports, activeSelection) : null),
-    [imports, activeSelection],
+    [imports, selectionKey],
   );
   const report = useMemo(
     () =>
@@ -44,8 +57,31 @@ export function Dashboard() {
             treatTransfersAsExternal: activeSelection.length === 1,
           })
         : null,
-    [merged, activeSelection.length],
+    [merged, selectionKey],
   );
+
+  const accountBreakdown = useMemo(
+    () => (imports.length > 0 ? analyzeAccountBreakdown(imports, activeSelection) : []),
+    [imports, selectionKey],
+  );
+
+  const perAccountCharts = useMemo(
+    () => (imports.length > 0 ? analyzePerAccountCharts(imports, activeSelection) : {}),
+    [imports, selectionKey],
+  );
+
+  useEffect(() => {
+    if (available.length === 0) {
+      return;
+    }
+    setSelected((current) => {
+      const filtered = current.filter((kind) => available.includes(kind));
+      if (filtered.length > 0) {
+        return filtered;
+      }
+      return [available[0]];
+    });
+  }, [available]);
 
   useEffect(() => {
     if (imports.length === 0) {
@@ -57,22 +93,28 @@ export function Dashboard() {
   async function handleFiles(files: File[]) {
     setBusy(true);
     setError(null);
+    setImportNotices([]);
     try {
       const parsed = await Promise.all(files.map((file) => parseXtbFile(file)));
-      const accepted = parsed.filter(
-        (file) =>
-          file.recognized ||
-          file.cashOperations.length > 0 ||
-          file.closedPositions.length > 0,
-      );
-      const rejected = files.length - accepted.length;
+      const { accepted, skippedEmpty, rejected } = partitionImportedFiles(parsed);
+
       if (accepted.length === 0) {
+        if (skippedEmpty.length > 0) {
+          setImportNotices(skippedEmpty.map((file) => emptyFileNotice(file)));
+          return;
+        }
         setError("Nie znaleziono transakcji XTB w tych plikach. Sprawdź, czy to eksport z xStation.");
         return;
       }
+
       setImports((current) => [...current, ...accepted]);
-      if (rejected > 0) {
-        setError(`Pominięto ${rejected} plik(i) bez rozpoznanej historii XTB.`);
+
+      const notices = skippedEmpty.map((file) => emptyFileNotice(file));
+      if (notices.length > 0) {
+        setImportNotices(notices);
+      }
+      if (rejected.length > 0) {
+        setError(`Pominięto ${rejected.length} plik(i) bez rozpoznanej historii XTB.`);
       }
     } catch {
       setError("Nie udało się odczytać pliku. Spróbuj XLSX albo CSV z xStation.");
@@ -96,8 +138,8 @@ export function Dashboard() {
               Sprawdź swoje wyniki. Spokojnie i przejrzyście.
             </h1>
             <p className="mt-4 text-base leading-7 text-muted sm:text-lg">
-              Wgraj eksporty z xStation — zwykły, IKE i IKZE możesz dodać razem. Policzysz sumę wpłat,
-              zysk oraz stopy zwrotu, bez logowania.
+              Wgraj eksporty z xStation — zwykły, IKE i IKZE możesz dodać razem. Policzysz wartość
+              portfela, zysk oraz stopy zwrotu, bez logowania.
             </p>
             <ul className="mt-6 flex flex-wrap gap-2">
               {trustPoints.map((point) => (
@@ -127,6 +169,7 @@ export function Dashboard() {
             onClear={() => {
               setImports([]);
               setError(null);
+              setImportNotices([]);
             }}
           />
 
@@ -136,6 +179,7 @@ export function Dashboard() {
               className="w-fit rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:border-primary hover:text-primary"
               onClick={() => {
                 setError(null);
+                setImportNotices([]);
                 setSelected(["standard", "ike", "ikze"]);
                 setImports(sampleAccounts());
               }}
@@ -153,6 +197,14 @@ export function Dashboard() {
           </div>
 
           {report ? null : <ExportGuide />}
+
+          {importNotices.length > 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              {importNotices.map((notice) => (
+                <p key={notice}>{notice}</p>
+              ))}
+            </div>
+          ) : null}
 
           {error ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-negative">
@@ -186,9 +238,32 @@ export function Dashboard() {
 
           {activeSelection.length > 0 ? <PortfolioSummary report={report} /> : null}
 
-          {activeSelection.length > 0 ? <PortfolioChart data={report.chart} /> : null}
+          {activeSelection.length > 0 ? (
+            <AccountBreakdownCards breakdown={accountBreakdown} />
+          ) : null}
+
+          {activeSelection.length > 0 ? (
+            <PortfolioChart
+              key={selectionKey}
+              data={report.chart}
+              perAccount={perAccountCharts}
+              selectedAccounts={activeSelection}
+              availableAccounts={available}
+              onSelectedAccountsChange={(kinds) => {
+                if (kinds.length === 0) {
+                  return;
+                }
+                setSelected(kinds);
+              }}
+            />
+          ) : null}
 
           {activeSelection.length > 0 ? <MetricCards report={report} /> : null}
+
+          {activeSelection.length > 0 ? <PortfolioDetails report={report} /> : null}
+
+          {activeSelection.length > 0 ? <PerformanceIndicators report={report} /> : null}
+
           <ExportGuide />
         </section>
       ) : null}

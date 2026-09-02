@@ -12,15 +12,17 @@ function toneClass(value: number | null): string {
   return value > 0 ? "text-positive" : "text-negative";
 }
 
-function investedCapitalTone(value: number): string {
-  if (value < 0) {
-    return "text-positive";
-  }
-  return "text-foreground";
-}
-
 export function MetricCards({ report }: MetricCardsProps) {
   const cards = [
+    {
+      label: "Zysk wyprodukowany",
+      value: formatSignedPln(report.totalProfit),
+      hint:
+        report.unrealizedProfit !== 0
+          ? `Zrealizowany: ${formatPln(report.realizedProfit)} · Niezrealizowany: ${formatPln(report.unrealizedProfit)}`
+          : "Dywidendy, odsetki i zamknięte pozycje",
+      toneClass: toneClass(report.totalProfit),
+    },
     {
       label: "Łączna stopa zwrotu",
       value: formatSignedPct(report.totalReturn),
@@ -30,23 +32,17 @@ export function MetricCards({ report }: MetricCardsProps) {
     {
       label: "Roczna stopa zwrotu",
       value: formatSignedPct(report.annualReturn),
-      hint: "XIRR, uwzględnia daty wpłat i wypłat",
+      hint: "XIRR — uwzględnia daty wpłat i wypłat",
       toneClass: toneClass(report.annualReturn),
     },
     {
-      label: "Aktualny kapitał wpłacony",
+      label: "Saldo przepływów",
       value: formatSignedPln(report.netDeposits),
-      hint: `Wpłaty: ${formatPln(report.totalDeposits)} · Wypłaty: ${formatPln(report.totalWithdrawals)}`,
-      toneClass: investedCapitalTone(report.netDeposits),
-    },
-    {
-      label: "Zysk wyprodukowany",
-      value: formatPln(report.totalProfit),
       hint:
-        report.unrealizedProfit !== 0
-          ? `W tym niezrealizowany: ${formatPln(report.unrealizedProfit)}`
-          : "Transakcje + dywidendy + odsetki",
-      toneClass: toneClass(report.totalProfit),
+        report.netDeposits < 0
+          ? "Wypłacono więcej niż wpłacono"
+          : `Wpłaty: ${formatPln(report.totalDeposits)} · Wypłaty: ${formatPln(report.totalWithdrawals)}`,
+      toneClass: "text-foreground",
     },
   ];
 

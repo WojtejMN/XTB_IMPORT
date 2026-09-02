@@ -17,6 +17,7 @@ export function mergeParsedFiles(
     accountKind: selected[0] ?? "standard",
     cashOperations: [],
     closedPositions: [],
+    openPositions: [],
     warnings,
     recognized: false,
     openProfit: undefined,
@@ -60,6 +61,9 @@ export function mergeParsedFiles(
       tradeKeys.add(key);
       merged.closedPositions.push(position);
     }
+    if (file.openPositions) {
+      merged.openPositions!.push(...file.openPositions);
+    }
   }
 
   merged.cashOperations.sort((a, b) => a.time.getTime() - b.time.getTime());
@@ -67,6 +71,9 @@ export function mergeParsedFiles(
   if (sawOpenSummary) {
     merged.openProfit = openProfit;
     merged.openPositionsValue = openPositionsValue;
+  }
+  if (merged.openPositions!.length === 0) {
+    merged.openPositions = undefined;
   }
   return merged;
 }

@@ -10,20 +10,43 @@ type AccountTabsProps = {
 };
 
 export function AccountTabs({ selected, available, onChange }: AccountTabsProps) {
-  function toggle(kind: AccountKind) {
-    if (selected.includes(kind)) {
-      onChange(selected.filter((entry) => entry !== kind));
+  function handleClick(kind: AccountKind, addToSelection: boolean) {
+    if (!available.includes(kind)) {
       return;
     }
-    onChange([...selected, kind]);
+
+    if (addToSelection) {
+      if (selected.includes(kind)) {
+        if (selected.length === 1) {
+          return;
+        }
+        onChange(selected.filter((entry) => entry !== kind));
+        return;
+      }
+      onChange([...selected, kind]);
+      return;
+    }
+
+    if (selected.includes(kind)) {
+      if (selected.length > 1) {
+        onChange(selected.filter((entry) => entry !== kind));
+        return;
+      }
+      return;
+    }
+
+    onChange([kind]);
   }
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">Które konta pokazać?</h2>
-          <p className="text-sm text-muted">Możesz zaznaczyć kilka naraz — wykres i stopy liczą się razem.</p>
+          <h2 className="text-lg font-semibold text-foreground">Które konto pokazać?</h2>
+          <p className="text-sm text-muted">
+            Kliknij konto, aby zobaczyć tylko jego wyniki. Kliknij ponownie zaznaczone konto, aby je
+            usunąć z widoku. Ctrl+klik (⌘+klik) dodaje konto do widoku łączonego.
+          </p>
         </div>
         <button
           type="button"
@@ -43,7 +66,7 @@ export function AccountTabs({ selected, available, onChange }: AccountTabsProps)
               type="button"
               disabled={!isAvailable}
               aria-pressed={isOn}
-              onClick={() => toggle(kind)}
+              onClick={(event) => handleClick(kind, event.ctrlKey || event.metaKey)}
               className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                 isOn
                   ? "bg-primary text-white shadow-sm"

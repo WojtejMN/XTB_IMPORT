@@ -1,11 +1,15 @@
 import { duplicatesClosedPositionPnl, isProfitKind, isSubaccountTransfer } from "../xtb/classify";
+import { aggregateSymbolProfits } from "../xtb/symbol-profit";
+import { mergeParsedFiles } from "../xtb/merge";
 import type {
+  AccountBreakdown,
   AccountKind,
   AnalyzeOptions,
   CashOperation,
   ChartPoint,
   KindCounts,
   ParsedXtbFile,
+  PortfolioMetrics,
   PortfolioReport,
 } from "../xtb/types";
 import { xirr, type CashFlow } from "./xirr";
@@ -171,6 +175,28 @@ function estimatedUnrealized(
   return unrealizedAtEnd * fraction;
 }
 
+function makeChartPoint(
+  time: number,
+  label: string,
+  netCapital: number,
+  portfolioValue: number,
+  depositDelta: number,
+  withdrawalDelta: number,
+): ChartPoint {
+  const investedCapital = Math.max(0, netCapital);
+  const cumulativeGain = Math.max(0, portfolioValue - investedCapital);
+  return {
+    time,
+    label,
+    netCapital,
+    portfolioValue,
+    investedCapital,
+    cumulativeGain,
+    depositDelta,
+    withdrawalDelta,
+  };
+}
+
 function buildChart(events: TimelineEvent[], options: ChartBuildOptions): ChartPoint[] {
   let deposits = 0;
   let withdrawals = 0;
@@ -191,12 +217,16 @@ function buildChart(events: TimelineEvent[], options: ChartBuildOptions): ChartP
     return Math.max(0, portfolio) + unrealized;
   }
 
-  points.push({
-    time: events[0].time.getTime() - 1,
-    label: formatChartLabel(events[0].time),
-    netCapital: 0,
-    portfolioValue: 0,
-  });
+  points.push(
+    makeChartPoint(
+      events[0].time.getTime() - 1,
+      formatChartLabel(events[0].time),
+      0,
+      0,
+      0,
+      0,
+    ),
+  );
 
   for (const event of events) {
     deposits += event.depositDelta;
@@ -211,16 +241,27 @@ function buildChart(events: TimelineEvent[], options: ChartBuildOptions): ChartP
     const value = portfolioValueAt(time);
     const last = points[points.length - 1];
     if (last && last.time === time) {
-      last.netCapital = netCapital;
-      last.portfolioValue = value;
+      const merged = makeChartPoint(
+        time,
+        formatChartLabel(event.time),
+        netCapital,
+        value,
+        last.depositDelta + event.depositDelta,
+        last.withdrawalDelta + event.withdrawalDelta,
+      );
+      points[points.length - 1] = merged;
       continue;
     }
-    points.push({
-      time,
-      label: formatChartLabel(event.time),
-      netCapital,
-      portfolioValue: value,
-    });
+    points.push(
+      makeChartPoint(
+        time,
+        formatChartLabel(event.time),
+        netCapital,
+        value,
+        event.depositDelta,
+        event.withdrawalDelta,
+      ),
+    );
   }
 
   return points;
@@ -256,6 +297,120 @@ function countKinds(parsed: ParsedXtbFile): KindCounts {
     counts[operation.kind] = (counts[operation.kind] ?? 0) + 1;
   }
   return counts;
+}
+
+function sumCashByKind(parsed: ParsedXtbFile, kind: CashOperation["kind"]): number {
+  return parsed.cashOperations
+    .filter((operation) => operation.kind === kind)
+    .reduce((sum, operation) => sum + operation.amount, 0);
+}
+
+function computeMetrics(parsed: ParsedXtbFile, firstDate: Date | null, lastDate: Date | null): PortfolioMetrics {
+  const totalDividends = sumCashByKind(parsed, "dividend");
+  const totalInterest = sumCashByKind(parsed, "interest");
+  const totalWithholdingTax = sumCashByKind(parsed, "withholding_tax");
+  const totalCommissions = sumCashByKind(parsed, "commission");
+  const totalInterestTax = sumCashByKind(parsed, "interest_tax");
+  const totalFeesAndTaxes =
+    Math.abs(totalCommissions) +
+    Math.abs(totalWithholdingTax) +
+    Math.abs(totalInterestTax);
+
+  const internalTransferCount = parsed.cashOperations.filter(
+    (operation) => operation.kind === "transfer" && isSubaccountTransfer(operation.rawType),
+  ).length;
+
+  const closed = parsed.closedPositions;
+  const winners = closed.filter((position) => position.netProfit > 0).length;
+  const winRate = closed.length > 0 ? winners / closed.length : null;
+
+  const holdingDays = closed
+    .filter((position) => position.openTime != null)
+    .map((position) => {
+      const open = position.openTime!.getTime();
+      const close = position.closeTime.getTime();
+      return Math.max(0, Math.round((close - open) / (1000 * 60 * 60 * 24)));
+    });
+  const avgHoldingDays =
+    holdingDays.length > 0
+      ? holdingDays.reduce((sum, days) => sum + days, 0) / holdingDays.length
+      : null;
+
+  const sortedByProfit = [...closed].sort((a, b) => b.netProfit - a.netProfit);
+  const bestPosition =
+    sortedByProfit.length > 0
+      ? { symbol: sortedByProfit[0].symbol, profit: sortedByProfit[0].netProfit }
+      : null;
+  const worstPosition =
+    sortedByProfit.length > 0
+      ? {
+          symbol: sortedByProfit[sortedByProfit.length - 1].symbol,
+          profit: sortedByProfit[sortedByProfit.length - 1].netProfit,
+        }
+      : null;
+
+  const topSymbols = aggregateSymbolProfits(parsed).slice(0, 5);
+
+  const investingDays =
+    firstDate && lastDate
+      ? Math.max(0, Math.round((lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)))
+      : null;
+
+  return {
+    totalDividends,
+    totalInterest,
+    totalWithholdingTax,
+    totalCommissions,
+    totalFeesAndTaxes,
+    internalTransferCount,
+    winRate,
+    avgHoldingDays,
+    bestPosition,
+    worstPosition,
+    topSymbols,
+    investingDays,
+  };
+}
+
+export function analyzeAccountBreakdown(
+  files: ParsedXtbFile[],
+  kinds: AccountKind[],
+): AccountBreakdown[] {
+  const breakdown: AccountBreakdown[] = [];
+  for (const kind of kinds) {
+    const forKind = files.filter((file) => file.accountKind === kind);
+    if (forKind.length === 0) {
+      continue;
+    }
+    const merged = mergeParsedFiles(forKind, [kind]);
+    const report = analyzePortfolio(merged, { treatTransfersAsExternal: true });
+    breakdown.push({
+      kind,
+      portfolioValue: report.portfolioValue,
+      totalProfit: report.totalProfit,
+      netDeposits: report.netDeposits,
+      totalDeposits: report.totalDeposits,
+      totalWithdrawals: report.totalWithdrawals,
+    });
+  }
+  return breakdown;
+}
+
+export function analyzePerAccountCharts(
+  files: ParsedXtbFile[],
+  kinds: AccountKind[],
+): Partial<Record<AccountKind, ChartPoint[]>> {
+  const charts: Partial<Record<AccountKind, ChartPoint[]>> = {};
+  for (const kind of kinds) {
+    const forKind = files.filter((file) => file.accountKind === kind);
+    if (forKind.length === 0) {
+      continue;
+    }
+    const merged = mergeParsedFiles(forKind, [kind]);
+    const report = analyzePortfolio(merged, { treatTransfersAsExternal: true });
+    charts[kind] = report.chart;
+  }
+  return charts;
 }
 
 export function analyzePortfolio(
@@ -298,14 +453,26 @@ export function analyzePortfolio(
   if (chart.length > 0) {
     const last = chart[chart.length - 1];
     if (hasCurrentValue && lastDate && lastDate.getTime() > last.time) {
-      chart.push({
-        time: lastDate.getTime(),
-        label: formatChartLabel(lastDate),
-        netCapital: netDeposits,
-        portfolioValue: currentValue!,
-      });
+      chart.push(
+        makeChartPoint(
+          lastDate.getTime(),
+          formatChartLabel(lastDate),
+          netDeposits,
+          currentValue!,
+          0,
+          0,
+        ),
+      );
     } else {
-      last.portfolioValue = portfolioValue;
+      const patched = makeChartPoint(
+        last.time,
+        last.label,
+        netDeposits,
+        portfolioValue,
+        last.depositDelta,
+        last.withdrawalDelta,
+      );
+      chart[chart.length - 1] = patched;
     }
   }
 
@@ -347,6 +514,11 @@ export function analyzePortfolio(
   if (totalDeposits === 0) {
     warnings.push("Nie znaleziono wpłat. Łączna stopa zwrotu wymaga historii depozytów.");
   }
+  if (unrealizedProfit !== 0) {
+    warnings.push(
+      "Wartość historyczna portfela jest szacowana. Bieżąca wartość otwartych pozycji pochodzi z eksportu.",
+    );
+  }
 
   const selectedAccounts = [
     ...new Set([
@@ -354,6 +526,8 @@ export function analyzePortfolio(
       ...parsed.closedPositions.map((position) => position.accountKind),
     ]),
   ] as AccountKind[];
+
+  const metrics = computeMetrics(parsed, firstDate, lastDate);
 
   return {
     currency: "PLN",
@@ -374,5 +548,7 @@ export function analyzePortfolio(
     tradeCount: parsed.closedPositions.length,
     kindCounts,
     selectedAccounts,
+    metrics,
+    accountBreakdown: [],
   };
 }

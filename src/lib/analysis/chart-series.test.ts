@@ -2,13 +2,25 @@ import { describe, expect, it } from "vitest";
 import { aggregateChartPoints, clampChartRange, formatBucketLabel } from "./chart-series";
 import type { ChartPoint } from "../xtb/types";
 
-function point(time: string, netCapital: number, portfolioValue: number): ChartPoint {
+function point(
+  time: string,
+  netCapital: number,
+  portfolioValue: number,
+  depositDelta = 0,
+  withdrawalDelta = 0,
+): ChartPoint {
   const date = new Date(time);
+  const investedCapital = Math.max(0, netCapital);
+  const cumulativeGain = Math.max(0, portfolioValue - investedCapital);
   return {
     time: date.getTime(),
     label: date.toISOString(),
     netCapital,
     portfolioValue,
+    investedCapital,
+    cumulativeGain,
+    depositDelta,
+    withdrawalDelta,
   };
 }
 
