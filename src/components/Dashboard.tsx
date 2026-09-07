@@ -13,6 +13,7 @@ import { parseXtbFile } from "@/lib/xtb/parse";
 import { sampleAccounts } from "@/lib/xtb/sample";
 import type { AccountKind, ParsedXtbFile } from "@/lib/xtb/types";
 import { AccountBreakdownCards } from "./AccountBreakdownCards";
+import { SaveAnalysisPrompt } from "./auth/SaveAnalysisPrompt";
 import { AccountTabs } from "./AccountTabs";
 import { ExportGuide } from "./ExportGuide";
 import { FileDropzone } from "./FileDropzone";
@@ -26,7 +27,7 @@ import { PortfolioSummary } from "./PortfolioSummary";
 
 const trustPoints = [
   "Dla inwestorów indywidualnych",
-  "Bez konta i e-maila",
+  "Konto opcjonalne",
   "Plik zostaje w przeglądarce",
 ];
 
@@ -139,7 +140,7 @@ export function Dashboard() {
             </h1>
             <p className="mt-4 text-base leading-7 text-muted sm:text-lg">
               Wgraj eksporty z xStation — zwykły, IKE i IKZE możesz dodać razem. Policzysz wartość
-              portfela, zysk oraz stopy zwrotu, bez logowania.
+              portfela, zysk oraz stopy zwrotu. Konto jest opcjonalne.
             </p>
             <ul className="mt-6 flex flex-wrap gap-2">
               {trustPoints.map((point) => (
@@ -237,6 +238,8 @@ export function Dashboard() {
           ) : null}
 
           {activeSelection.length > 0 ? <PortfolioSummary report={report} /> : null}
+
+          {activeSelection.length > 0 ? <SaveAnalysisPrompt /> : null}
 
           {activeSelection.length > 0 ? (
             <AccountBreakdownCards breakdown={accountBreakdown} />

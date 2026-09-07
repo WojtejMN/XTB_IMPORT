@@ -1,3 +1,4 @@
+import { NewsletterForm } from "@/components/auth/NewsletterForm";
 import { Logo } from "@/components/brand/Logo";
 
 export function SiteFooter() {
@@ -7,10 +8,13 @@ export function SiteFooter() {
         <div className="md:col-span-2">
           <Logo />
           <p className="mt-4 max-w-md text-sm leading-6 text-muted">
-            Narzędzie dla inwestorów indywidualnych, którzy chcą zobaczyć sumę wpłat, zysk
-            i stopy zwrotu ze swojego konta XTB — bez zakładania konta i bez wysyłania historii
-            na serwer.
+            Narzędzie dla inwestorów indywidualnych, którzy chcą zobaczyć sumę wpłat, zysk i stopy
+            zwrotu ze swojego konta XTB. Analiza plików działa lokalnie — konto i newsletter są
+            opcjonalne.
           </p>
+          <div className="mt-6 max-w-md">
+            <NewsletterForm />
+          </div>
         </div>
         <div>
           <p className="text-sm font-semibold text-foreground">Nawigacja</p>
@@ -36,14 +40,18 @@ export function SiteFooter() {
           <p className="text-sm font-semibold text-foreground">Zaufanie</p>
           <ul className="mt-3 space-y-2 text-sm text-muted">
             <li>Analiza tylko w przeglądarce</li>
-            <li>Brak konta i newslettera</li>
+            <li>Konto opcjonalne</li>
+            <li>E-maile bez duplikatów</li>
             <li>Nie powiązane z XTB S.A.</li>
           </ul>
         </div>
       </div>
       <div className="border-t border-border">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-5 text-xs leading-5 text-muted sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <p>© {new Date().getFullYear()} XTB Przegląd. Narzędzie niezależne, nie stanowi porady inwestycyjnej.</p>
+          <p>
+            © {new Date().getFullYear()} XTB Przegląd. Narzędzie niezależne, nie stanowi porady
+            inwestycyjnej.
+          </p>
           <p>XTB oraz xStation są znakami towarowymi ich właścicieli.</p>
         </div>
       </div>
