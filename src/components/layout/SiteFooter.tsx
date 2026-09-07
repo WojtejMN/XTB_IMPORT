@@ -1,4 +1,4 @@
-import { NewsletterForm } from "@/components/auth/NewsletterForm";
+import { NewsletterForm } from "@/components/NewsletterForm";
 import { Logo } from "@/components/brand/Logo";
 
 export function SiteFooter() {
@@ -9,8 +9,7 @@ export function SiteFooter() {
           <Logo />
           <p className="mt-4 max-w-md text-sm leading-6 text-muted">
             Narzędzie dla inwestorów indywidualnych, którzy chcą zobaczyć sumę wpłat, zysk i stopy
-            zwrotu ze swojego konta XTB. Analiza plików działa lokalnie — konto i newsletter są
-            opcjonalne.
+            zwrotu ze swojego konta XTB — bez zakładania konta i bez wysyłania historii na serwer.
           </p>
           <div className="mt-6 max-w-md">
             <NewsletterForm />
@@ -34,14 +33,19 @@ export function SiteFooter() {
                 Prywatność
               </a>
             </li>
+            <li>
+              <a href="#newsletter" className="hover:text-foreground">
+                Newsletter
+              </a>
+            </li>
           </ul>
         </div>
         <div>
           <p className="text-sm font-semibold text-foreground">Zaufanie</p>
           <ul className="mt-3 space-y-2 text-sm text-muted">
             <li>Analiza tylko w przeglądarce</li>
-            <li>Konto opcjonalne</li>
-            <li>E-maile bez duplikatów</li>
+            <li>Bez konta i logowania</li>
+            <li>Newsletter bez duplikatów e-maili</li>
             <li>Nie powiązane z XTB S.A.</li>
           </ul>
         </div>
