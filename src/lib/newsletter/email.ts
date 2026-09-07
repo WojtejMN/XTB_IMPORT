@@ -8,6 +8,5 @@ export function isValidEmail(email: string): boolean {
   if (normalized.length < 5 || normalized.length > 254) {
     return false;
   }
-  // Prosta walidacja wystarczająca do UI — nie RFC pełne.
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
 }

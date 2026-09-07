@@ -11,8 +11,8 @@ export function PrivacySection() {
         </h2>
         <div className="mt-4 grid gap-6 text-sm leading-6 text-muted md:grid-cols-2">
           <p>
-            Parser i wykres działają lokalnie w przeglądarce. Konto i newsletter są opcjonalne —
-            e-mail zapisujemy tylko wtedy, gdy sam go podasz. Pliku XTB nigdy nie wysyłamy na
+            Parser i wykres działają lokalnie w przeglądarce. Nie wymagamy konta. E-mail zapisujemy
+            tylko wtedy, gdy sam zapiszesz się na newsletter. Pliku XTB nigdy nie wysyłamy na
             serwer.
           </p>
           <p>

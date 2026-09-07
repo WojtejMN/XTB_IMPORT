@@ -1,42 +1,52 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
-import { useAuth } from "./AuthProvider";
+import {
+  NEWSLETTER_STORAGE_KEY,
+  emptyNewsletterStore,
+  readNewsletterStore,
+  serializeNewsletterStore,
+  subscribeNewsletter,
+} from "@/lib/newsletter/store";
 
-type NewsletterFormProps = {
-  compact?: boolean;
-};
-
-export function NewsletterForm({ compact = false }: NewsletterFormProps) {
-  const { user, subscribe } = useAuth();
-  const [email, setEmail] = useState(user?.email ?? "");
+export function NewsletterForm() {
+  const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    if (user?.email) {
-      setEmail(user.email);
-    }
-  }, [user?.email]);
+    setReady(true);
+  }, []);
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setMessage(null);
     setError(null);
-    const result = subscribe(email || user?.email || "");
+
+    const current = ready
+      ? readNewsletterStore(window.localStorage.getItem(NEWSLETTER_STORAGE_KEY))
+      : emptyNewsletterStore();
+    const { store, result } = subscribeNewsletter(current, email);
+
     if (!result.ok) {
       setError(result.error);
       return;
     }
+
+    window.localStorage.setItem(NEWSLETTER_STORAGE_KEY, serializeNewsletterStore(store));
     setMessage(
       result.alreadySubscribed
         ? "Ten e-mail jest już zapisany na newsletter — bez duplikatu."
         : "Dziękujemy! Zapisaliśmy Twój e-mail na newsletter.",
     );
+    if (!result.alreadySubscribed) {
+      setEmail("");
+    }
   }
 
   return (
-    <div className={compact ? "" : "rounded-2xl border border-border bg-surface/80 p-4"}>
+    <div id="newsletter" className="scroll-mt-28 rounded-2xl border border-border bg-surface/80 p-4">
       <p className="text-sm font-semibold text-foreground">Newsletter</p>
       <p className="mt-1 text-sm text-muted">
         Krótkie informacje o nowościach. Ten sam e-mail nie zapisze się drugi raz.
@@ -50,15 +60,15 @@ export function NewsletterForm({ compact = false }: NewsletterFormProps) {
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          placeholder={user?.email ?? "jan@example.com"}
+          placeholder="jan@example.com"
           className="w-full flex-1 rounded-full border border-border bg-background px-4 py-2.5 text-sm text-foreground outline-none ring-primary/15 focus:border-primary focus:ring-4"
-          required={!user}
+          required
         />
         <button
           type="submit"
           className="rounded-full bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-hover"
         >
-          Zapisz się
+          Zapisz się do newslettera
         </button>
       </form>
       {message ? <p className="mt-2 text-sm text-positive">{message}</p> : null}
