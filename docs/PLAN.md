@@ -145,7 +145,7 @@ Parser skanuje nagłówki zamiast zakładać stałe kolumny. Aliasuje `Close Tim
 
 Typy kasowe (case-insensitive): `Deposit`, `Withdrawal`, `IKE deposit` / `IKE return` / `IKZE deposit` (transfer między kontami), `Stock purchase` / `Stock sell`, `Dividend`, `Withholding tax`, `Tax from dividend…`, `IKE tax`, `Free funds interest`, `Close trade`, `Swap`, `Subaccount transfer`.
 
-`Close trade` i kasowy `Swap` są pomijane w zysku, gdy arkusz zamkniętych pozycji już zawiera P/L (żeby nie liczyć dwa razy). Transfer subkonta nigdy nie jest wpłatą inwestora. Wynik otwartych pozycji z arkusza Open Positions doliczamy jako zysk niezrealizowany, dopóki użytkownik nie poda salda ręcznie.
+`Close trade` i kasowy `Swap` są pomijane w zysku, gdy arkusz zamkniętych pozycji już zawiera P/L (żeby nie liczyć dwa razy). Transfer subkonta nigdy nie jest wpłatą inwestora. W widoku wielu kont transfery PLN↔IKE/IKZE są sparowane i pomijane; transfer bez drugiej nogi w wgranych plikach (np. przewalutowanie USD, inny rachunek) liczy się jak wpłata/wypłata zewnętrzna. Wynik otwartych pozycji z arkusza Open Positions doliczamy jako zysk niezrealizowany, dopóki użytkownik nie poda salda ręcznie.
 
 ## Stack (aktualny na 2026)
 
