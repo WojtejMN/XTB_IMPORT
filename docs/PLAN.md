@@ -137,7 +137,7 @@ Aktualny eksport (2026):
 | --- | --- |
 | Cash Operations | Type, Time, Amount, Comment, Ticker, Position ID |
 | Closed Positions | Instrument/Ticker, Open/Close Time (UTC), Profit/Loss, Gross Profit |
-| Open Positions | podsumowanie Product / Metric / Amount (Value, Profit) |
+| Open Positions | podsumowanie Product / Metric / Amount (`Open position value`, `Open position profit`; starsze: `Value` / `Profit`) |
 
 Starszy eksport: `CASH OPERATION HISTORY`, `CLOSED POSITION HISTORY`.
 

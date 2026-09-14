@@ -280,4 +280,37 @@ describe("parseXlsxBuffer", () => {
       "interest",
     ]);
   });
+
+  it("czyta Open Positions z etykietami Open position value/profit", () => {
+    const buffer = buildXlsx([
+      {
+        name: "Cash Operations",
+        rows: [
+          ["ID", "Type", "Time", "Comment", "Symbol", "Amount"],
+          ["1", "Deposit", "01.01.2025 10:00:00", "", "", 1000],
+        ],
+      },
+      {
+        name: "Closed Positions",
+        rows: [["Symbol", "Close Time", "Profit/Loss"]],
+      },
+      {
+        name: "Open Positions",
+        rows: [
+          ["Account number", "51877991"],
+          ["Open Positions", ""],
+          ["Product", "Metric", "Amount", "Currency"],
+          ["IKE", "Open position value", 4806.5, ""],
+          ["IKE", "Open position profit", 1048.89, ""],
+          ["My Trades", "Open position value", 0, "PLN"],
+          ["My Trades", "Open position profit", 0, "PLN"],
+          ["Note", "Summary values and open positions are shown as of the report generation time"],
+        ],
+      },
+    ]);
+
+    const parsed = parseXlsxBuffer(buffer, "IKE_open_labels.xlsx");
+    expect(parsed.openPositionsValue).toBeCloseTo(4806.5, 5);
+    expect(parsed.openProfit).toBeCloseTo(1048.89, 5);
+  });
 });

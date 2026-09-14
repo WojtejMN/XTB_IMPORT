@@ -259,10 +259,12 @@ export function parseOpenPositionsSummary(rows: unknown[][]): { value: number; p
     if (amount == null) {
       continue;
     }
-    if (metric === "value") {
+    // Aktualny xStation: "Open position value" / "Open position profit".
+    // Starszy eksport: samo "Value" / "Profit".
+    if (metric === "value" || metric.endsWith("position value")) {
       value += amount;
       sawMetric = true;
-    } else if (metric === "profit") {
+    } else if (metric === "profit" || metric.endsWith("position profit")) {
       profit += amount;
       sawMetric = true;
     }
