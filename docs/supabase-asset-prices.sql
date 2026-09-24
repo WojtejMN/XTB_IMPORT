@@ -12,6 +12,9 @@ create index if not exists asset_prices_ticker_date_idx
 
 alter table public.asset_prices enable row level security;
 
+grant select on public.asset_prices to anon, authenticated;
+grant all on public.asset_prices to service_role;
+
 -- Odczyt cen dla frontendu / anon; zapis przez service role (omija RLS).
 do $$
 begin
