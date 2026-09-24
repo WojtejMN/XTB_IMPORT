@@ -156,17 +156,21 @@ Typy kasowe (case-insensitive): `Deposit`, `Withdrawal`, `IKE deposit` / `IKE re
 | Wykres | Recharts | prosty wykres liniowy w React |
 | XLSX | fflate + XML | działa w przeglądarce, bez luk SheetJS |
 | Testy | Vitest | szybkie testy czystych funkcji |
+| Ceny EOD | Yahoo Finance (`yahoo-finance2`) + Supabase `asset_prices` | braki dat dociągane tylko gdy trzeba |
 
-Świadomie bez bazy i API: plik nie opuszcza przeglądarki.
+Historia transakcji XTB nadal nie opuszcza przeglądarki. Na serwer idą wyłącznie tickery i data pierwszej transakcji (do synchronizacji cen).
 
 ## Struktura kodu
 
 - `src/lib/xtb` — parser i klasyfikacja
 - `src/lib/analysis` — portfel i XIRR
+- `src/lib/prices` — mapowanie tickerów, luki dat, sync Yahoo → Supabase, odczyt cen
+- `src/app/api/prices/sync` — endpoint synchronizacji cen
+- `src/app/api/prices` — odczyt dziennych cen z `asset_prices`
+- `src/lib/analysis/market-value.ts` — wykres gotówka + MTM (GPW `.PL`)
 - `src/components` — dropzone, wykres, karty
 - `Rules` — zasady kodu i testów
 - `src/**/*.test.ts` — testy jednostkowe
-
 ## Ryzyka
 
 - XTB znowu zmieni nazwy arkuszy/kolumn → mapowanie po aliasach + test na fixturze

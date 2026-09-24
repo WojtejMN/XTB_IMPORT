@@ -2,10 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  enrichChartWithMarketPrices,
+  groupPricesByTicker,
+} from "@/lib/analysis/market-value";
+import {
   analyzeAccountBreakdown,
   analyzePerAccountCharts,
   analyzePortfolio,
 } from "@/lib/analysis/portfolio";
+import { requestAssetPrices, requestPriceSync } from "@/lib/prices/client";
+import type { AssetPriceRow } from "@/lib/prices/supabase";
+import { collectTickerStartDatesFromFiles } from "@/lib/prices/ticker-requests";
 import { stampAccountKind } from "@/lib/xtb/account";
 import { emptyFileNotice, partitionImportedFiles } from "@/lib/xtb/import";
 import { mergeParsedFiles } from "@/lib/xtb/merge";
@@ -35,6 +42,8 @@ export function Dashboard() {
   const [selected, setSelected] = useState<AccountKind[]>(["standard", "ike", "ikze"]);
   const [error, setError] = useState<string | null>(null);
   const [importNotices, setImportNotices] = useState<string[]>([]);
+  const [priceSyncNotice, setPriceSyncNotice] = useState<string | null>(null);
+  const [assetPrices, setAssetPrices] = useState<AssetPriceRow[]>([]);
   const [busy, setBusy] = useState(false);
 
   const available = useMemo(
@@ -70,6 +79,19 @@ export function Dashboard() {
     [imports, selectionKey],
   );
 
+  const marketChart = useMemo(() => {
+    if (!report || !merged || assetPrices.length === 0) {
+      return null;
+    }
+    const enriched = enrichChartWithMarketPrices(
+      report.chart,
+      merged,
+      groupPricesByTicker(assetPrices),
+      { treatTransfersAsExternal: activeSelection.length === 1 },
+    );
+    return enriched.usedMarket ? enriched : null;
+  }, [report, merged, assetPrices, selectionKey]);
+
   useEffect(() => {
     if (available.length === 0) {
       return;
@@ -90,10 +112,54 @@ export function Dashboard() {
     document.getElementById("wyniki")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [imports]);
 
+  async function syncPricesForFiles(files: ParsedXtbFile[]) {
+    const items = collectTickerStartDatesFromFiles(files);
+    if (items.length === 0) {
+      setPriceSyncNotice(null);
+      setAssetPrices([]);
+      return;
+    }
+
+    setPriceSyncNotice(`Synchronizacja cen dla ${items.length} ticker(ów)…`);
+    try {
+      const result = await requestPriceSync(items);
+      const parts = [
+        result.fetchedTickers > 0 ? `pobrano ${result.fetchedTickers}` : null,
+        result.skippedTickers > 0 ? `aktualne ${result.skippedTickers}` : null,
+        result.errorTickers > 0 ? `błędy ${result.errorTickers}` : null,
+      ].filter(Boolean);
+
+      const from = items.reduce(
+        (min, item) => (item.startDate < min ? item.startDate : min),
+        items[0]!.startDate,
+      );
+      const rows = await requestAssetPrices({
+        tickers: items.map((item) => item.xtbTicker),
+        from,
+      });
+      setAssetPrices(rows);
+
+      const gpwTickers = items.filter((item) => item.xtbTicker.endsWith(".PL")).length;
+      setPriceSyncNotice(
+        `Ceny rynkowe: ${parts.join(" · ") || "brak zmian"} · ${rows.length} notowań` +
+          (gpwTickers > 0 ? ` · MTM dla GPW (${gpwTickers} tickerów)` : "") +
+          ".",
+      );
+    } catch (syncError) {
+      setAssetPrices([]);
+      setPriceSyncNotice(
+        syncError instanceof Error
+          ? `Nie udało się zsynchronizować cen: ${syncError.message}`
+          : "Nie udało się zsynchronizować cen rynkowych.",
+      );
+    }
+  }
+
   async function handleFiles(files: File[]) {
     setBusy(true);
     setError(null);
     setImportNotices([]);
+    setPriceSyncNotice(null);
     try {
       const parsed = await Promise.all(files.map((file) => parseXtbFile(file)));
       const { accepted, skippedEmpty, rejected } = partitionImportedFiles(parsed);
@@ -107,7 +173,8 @@ export function Dashboard() {
         return;
       }
 
-      setImports((current) => [...current, ...accepted]);
+      const nextImports = [...imports, ...accepted];
+      setImports(nextImports);
 
       const notices = skippedEmpty.map((file) => emptyFileNotice(file));
       if (notices.length > 0) {
@@ -116,6 +183,9 @@ export function Dashboard() {
       if (rejected.length > 0) {
         setError(`Pominięto ${rejected.length} plik(i) bez rozpoznanej historii XTB.`);
       }
+
+      // Tylko tickery + daty startu — bez wysyłania historii transakcji.
+      void syncPricesForFiles(nextImports);
     } catch {
       setError("Nie udało się odczytać pliku. Spróbuj XLSX albo CSV z xStation.");
     } finally {
@@ -164,12 +234,23 @@ export function Dashboard() {
               );
             }}
             onRemove={(index) => {
-              setImports((current) => current.filter((_, fileIndex) => fileIndex !== index));
+              setImports((current) => {
+                const next = current.filter((_, fileIndex) => fileIndex !== index);
+                if (next.length === 0) {
+                  setAssetPrices([]);
+                  setPriceSyncNotice(null);
+                } else {
+                  void syncPricesForFiles(next);
+                }
+                return next;
+              });
             }}
             onClear={() => {
               setImports([]);
               setError(null);
               setImportNotices([]);
+              setPriceSyncNotice(null);
+              setAssetPrices([]);
             }}
           />
 
@@ -180,6 +261,8 @@ export function Dashboard() {
               onClick={() => {
                 setError(null);
                 setImportNotices([]);
+                setPriceSyncNotice(null);
+                setAssetPrices([]);
                 setSelected(["standard", "ike", "ikze"]);
                 setImports(sampleAccounts());
               }}
@@ -204,6 +287,13 @@ export function Dashboard() {
                 <p key={notice}>{notice}</p>
               ))}
             </div>
+          ) : null}
+
+          {priceSyncNotice ? (
+            <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+              {priceSyncNotice}
+              {marketChart ? ` · wykres: gotówka + MTM (${marketChart.pricedLots} lotów).` : ""}
+            </p>
           ) : null}
 
           {error ? (
@@ -244,9 +334,9 @@ export function Dashboard() {
 
           {activeSelection.length > 0 ? (
             <PortfolioChart
-              key={selectionKey}
-              data={report.chart}
-              perAccount={perAccountCharts}
+              key={selectionKey + (marketChart ? "-mtm" : "-cash")}
+              data={marketChart?.chart ?? report.chart}
+              perAccount={marketChart ? undefined : perAccountCharts}
               selectedAccounts={activeSelection}
               availableAccounts={available}
               onSelectedAccountsChange={(kinds) => {
