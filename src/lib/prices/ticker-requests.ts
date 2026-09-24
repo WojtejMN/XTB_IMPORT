@@ -1,4 +1,5 @@
 import type { ParsedXtbFile } from "../xtb/types";
+import { isMarketPriceTicker } from "./yahoo-ticker";
 
 export type PriceSyncRequest = {
   xtbTicker: string;
@@ -11,14 +12,14 @@ function toIsoDate(date: Date): string {
 
 /**
  * Z historii XTB buduje listę unikalnych tickerów z datą pierwszej transakcji.
- * Nie wysyła pełnej historii — tylko ticker + min data.
+ * Pomija CFD/krypto. Nie wysyła pełnej historii — tylko ticker + min data.
  */
 export function collectTickerStartDates(parsed: ParsedXtbFile): PriceSyncRequest[] {
   const earliest = new Map<string, number>();
 
   function bump(symbol: string, time: Date | null | undefined) {
     const ticker = symbol.trim().toUpperCase();
-    if (!ticker || !time || Number.isNaN(time.getTime())) {
+    if (!ticker || !isMarketPriceTicker(ticker) || !time || Number.isNaN(time.getTime())) {
       return;
     }
     const ms = time.getTime();
@@ -48,8 +49,7 @@ export function collectTickerStartDates(parsed: ParsedXtbFile): PriceSyncRequest
   }
 
   for (const position of parsed.openPositions ?? []) {
-    // Brak daty otwarcia w podsumowaniu — wystarczy zsynchronizować bieżące ceny.
-    bump(position.symbol, new Date());
+    bump(position.symbol, position.openTime ?? new Date());
   }
 
   return [...earliest.entries()]

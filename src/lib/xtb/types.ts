@@ -48,6 +48,9 @@ export type OpenPosition = {
   netProfit: number;
   grossProfit?: number;
   value?: number;
+  volume?: number | null;
+  openTime?: Date | null;
+  openPrice?: number | null;
   accountKind: AccountKind;
 };
 

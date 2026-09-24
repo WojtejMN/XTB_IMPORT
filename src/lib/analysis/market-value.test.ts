@@ -105,6 +105,31 @@ describe("buildShareLots", () => {
     expect(lots[0]?.volume).toBeCloseTo(10, 5);
     expect(lots[0]?.closeMs).toBeNull();
   });
+
+  it("używa volume i openTime z Open Positions", () => {
+    const openMs = Date.parse("2024-07-12T10:00:00Z");
+    const parsed = file({
+      openPositions: [
+        {
+          symbol: "CDR.PL",
+          netProfit: 50,
+          value: 1100,
+          volume: 10,
+          openTime: new Date(openMs),
+          accountKind: "standard",
+        },
+      ],
+    });
+    const lots = buildShareLots(parsed, {}, {});
+    expect(lots).toEqual([
+      {
+        ticker: "CDR.PL",
+        openMs,
+        closeMs: null,
+        volume: 10,
+      },
+    ]);
+  });
 });
 
 describe("holdingsValueAt", () => {
@@ -193,7 +218,7 @@ describe("enrichChartWithMarketPrices", () => {
     expect(result.usedMarket).toBe(true);
     expect(result.pricedLots).toBe(1);
 
-    const mid = result.chart.find((point) => point.time === Date.parse("2024-01-15T12:00:00Z"));
+    const mid = result.chart.find((point) => point.time === Date.parse("2024-01-15T16:00:00.000Z"));
     expect(mid).toBeTruthy();
     // gotówka 5000 − 1000 = 4000 + 10×120 = 1200 → 5200
     expect(mid!.portfolioValue).toBeCloseTo(5200, 5);
