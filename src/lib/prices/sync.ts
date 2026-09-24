@@ -2,7 +2,7 @@ import YahooFinance from "yahoo-finance2";
 import { computeMissingPriceRanges, type DateRange } from "./gaps";
 import { getSupabaseAdmin, type AssetPriceRow } from "./supabase";
 import type { PriceSyncRequest } from "./ticker-requests";
-import { guessCurrencyFromXtbTicker, mapXtbTickerToYahoo } from "./yahoo-ticker";
+import { guessCurrencyFromXtbTicker, isMarketPriceTicker, mapXtbTickerToYahoo } from "./yahoo-ticker";
 
 export type TickerSyncResult = {
   xtbTicker: string;
@@ -11,6 +11,7 @@ export type TickerSyncResult = {
   ranges: DateRange[];
   inserted: number;
   message?: string;
+  prices?: AssetPriceRow[];
 };
 
 export type SyncHistoricalPricesResult = {
@@ -18,6 +19,8 @@ export type SyncHistoricalPricesResult = {
   fetchedTickers: number;
   skippedTickers: number;
   errorTickers: number;
+  /** Notowania z Yahoo (także gdy zapis do Supabase się nie udał). */
+  prices: AssetPriceRow[];
 };
 
 function todayIso(): string {
@@ -80,18 +83,29 @@ async function fetchYahooRange(
     .map((row) => ({ date: row.date, close: Number(row.close) }));
 }
 
+function mergePriceRows(rows: AssetPriceRow[]): AssetPriceRow[] {
+  const map = new Map<string, AssetPriceRow>();
+  for (const row of rows) {
+    map.set(`${row.ticker}|${row.date}`, row);
+  }
+  return [...map.values()].sort((a, b) =>
+    a.ticker === b.ticker ? a.date.localeCompare(b.date) : a.ticker.localeCompare(b.ticker),
+  );
+}
+
 export async function syncHistoricalPrices(
   items: PriceSyncRequest[],
 ): Promise<SyncHistoricalPricesResult> {
   const today = todayIso();
   const results: TickerSyncResult[] = [];
+  const collectedPrices: AssetPriceRow[] = [];
   let fetchedTickers = 0;
   let skippedTickers = 0;
   let errorTickers = 0;
 
   for (const item of items) {
     const xtbTicker = item.xtbTicker.trim().toUpperCase();
-    if (!xtbTicker || !item.startDate) {
+    if (!xtbTicker || !item.startDate || !isMarketPriceTicker(xtbTicker)) {
       continue;
     }
 
@@ -99,7 +113,14 @@ export async function syncHistoricalPrices(
     const currency = guessCurrencyFromXtbTicker(xtbTicker);
 
     try {
-      const coverage = await readCoverage(xtbTicker);
+      let coverage: { minDate: string | null; maxDate: string | null };
+      try {
+        coverage = await readCoverage(xtbTicker);
+      } catch {
+        // Pusta baza / brak uprawnień SELECT — traktuj jak brak pokrycia i i tak pobierz Yahoo.
+        coverage = { minDate: null, maxDate: null };
+      }
+
       const ranges = computeMissingPriceRanges(item.startDate, today, coverage);
 
       if (ranges.length === 0) {
@@ -128,23 +149,36 @@ export async function syncHistoricalPrices(
         }
       }
 
+      let inserted = 0;
+      let persistMessage: string | undefined;
       if (records.length > 0) {
-        const supabase = getSupabaseAdmin();
-        const { error } = await supabase
-          .from("asset_prices")
-          .upsert(records, { onConflict: "ticker,date" });
-        if (error) {
-          throw new Error(error.message);
+        try {
+          const supabase = getSupabaseAdmin();
+          const { error } = await supabase
+            .from("asset_prices")
+            .upsert(records, { onConflict: "ticker,date" });
+          if (error) {
+            throw new Error(error.message);
+          }
+          inserted = records.length;
+        } catch (persistError) {
+          persistMessage =
+            persistError instanceof Error
+              ? `Yahoo OK, zapis do bazy nieudany: ${persistError.message}`
+              : "Yahoo OK, zapis do bazy nieudany.";
         }
       }
 
+      collectedPrices.push(...records);
       fetchedTickers += 1;
       results.push({
         xtbTicker,
         yahooTicker,
         status: "fetched",
         ranges,
-        inserted: records.length,
+        inserted,
+        message: persistMessage,
+        prices: records,
       });
     } catch (error) {
       errorTickers += 1;
@@ -159,5 +193,11 @@ export async function syncHistoricalPrices(
     }
   }
 
-  return { results, fetchedTickers, skippedTickers, errorTickers };
+  return {
+    results,
+    fetchedTickers,
+    skippedTickers,
+    errorTickers,
+    prices: mergePriceRows(collectedPrices),
+  };
 }

@@ -30,6 +30,8 @@ type PortfolioChartProps = {
   selectedAccounts: AccountKind[];
   availableAccounts: AccountKind[];
   onSelectedAccountsChange: (accounts: AccountKind[]) => void;
+  /** Gdy true — interpolacja liniowa (dzienne MTM), inaczej schodki transakcyjne. */
+  marketMarked?: boolean;
 };
 
 type ChartMode = "simple" | "advanced";
@@ -141,12 +143,15 @@ export function PortfolioChart({
   selectedAccounts,
   availableAccounts,
   onSelectedAccountsChange,
+  marketMarked = false,
 }: PortfolioChartProps) {
   const [mode, setMode] = useState<ChartMode>("simple");
   const [granularity, setGranularity] = useState<ChartGranularity>("month");
   const [dataView, setDataView] = useState<DataView>("value");
   const [brushStart, setBrushStart] = useState(0);
   const [brushEnd, setBrushEnd] = useState(0);
+
+  const curveType = marketMarked ? "linear" : "stepAfter";
 
   const overlayKey = selectedAccounts.length > 1 ? selectedAccounts.slice().sort().join(",") : "";
   const overlayAccounts = selectedAccounts.length > 1 ? selectedAccounts : [];
@@ -196,7 +201,9 @@ export function PortfolioChart({
 
   const description =
     dataView === "value"
-      ? "Warstwy: kapitał netto (niebieski) + zysk skumulowany (zielony) = wartość portfela."
+      ? marketMarked
+        ? "Dzienna wycena MTM: gotówka + akcje GPW × close z bazy/Yahoo."
+        : "Warstwy: kapitał netto (niebieski) + zysk skumulowany (zielony) = wartość portfela."
       : dataView === "profit"
         ? "Skumulowany zysk w czasie — bez kapitału wpłaconego."
         : "Wpłaty i wypłaty jako słupki w poszczególnych okresach.";
@@ -368,7 +375,7 @@ export function PortfolioChart({
             {dataView === "value" ? (
               <>
                 <Area
-                  type="stepAfter"
+                  type={curveType}
                   dataKey="investedCapital"
                   stackId="portfolio"
                   stroke="#1a6fb5"
@@ -377,7 +384,7 @@ export function PortfolioChart({
                   strokeWidth={2}
                 />
                 <Area
-                  type="stepAfter"
+                  type={curveType}
                   dataKey="cumulativeGain"
                   stackId="portfolio"
                   stroke="#0d7a62"
@@ -388,7 +395,7 @@ export function PortfolioChart({
                 {overlayAccounts.map((kind) => (
                   <Line
                     key={kind}
-                    type="stepAfter"
+                    type={curveType}
                     dataKey={`account_${kind}`}
                     name={kind}
                     stroke={ACCOUNT_COLORS[kind]}
@@ -429,7 +436,7 @@ export function PortfolioChart({
 
             {dataView === "profit" ? (
               <Line
-                type="stepAfter"
+                type={curveType}
                 dataKey="cumulativeGain"
                 name="cumulativeGainLine"
                 stroke="#0d7a62"
@@ -455,9 +462,9 @@ export function PortfolioChart({
 
       {dataView === "value" ? (
         <p className="mt-3 text-xs text-muted">
-          Niebieskie kropki = wpłaty, czerwone = wypłaty. Po synchronizacji cen GPW wykres może
-          używać dziennych notowań z bazy (gotówka + MTM). Instrumenty spoza PLN zostają na
-          szacunku z historii XTB.
+          {marketMarked
+            ? "Wykres MTM: wartość = gotówka + Σ(akcje GPW × close). CFD/krypto liczone tylko po zrealizowanym P/L. Instrumenty spoza PLN (np. SXRV.DE) — notowania sync, MTM bez FX na MVP."
+            : "Niebieskie kropki = wpłaty, czerwone = wypłaty. Brak dziennych notowań — tryb awaryjny ze schodkami transakcyjnymi. Po syncu cen GPW wykres przełączy się na MTM."}
         </p>
       ) : null}
 
@@ -468,7 +475,7 @@ export function PortfolioChart({
               <XAxis dataKey="label" hide />
               <YAxis hide domain={["dataMin", "dataMax"]} />
               <Area
-                type="stepAfter"
+                type={curveType}
                 dataKey="portfolioValue"
                 stroke="#0d7a62"
                 fill="#0d7a62"

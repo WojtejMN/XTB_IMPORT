@@ -4,6 +4,7 @@ import {
   findHeader,
   getCell,
   isCashHeader,
+  isOpenPositionDetailHeader,
   isTradeHeader,
   type ColumnMap,
 } from "./headers";
@@ -156,7 +157,8 @@ export function parseOpenPositionRows(
   rows: unknown[][],
   accountKind: AccountKind,
 ): OpenPosition[] {
-  const header = findHeader(rows, isTradeHeader);
+  const header =
+    findHeader(rows, isOpenPositionDetailHeader) ?? findHeader(rows, isTradeHeader);
   if (!header) {
     return [];
   }
@@ -170,19 +172,25 @@ export function parseOpenPositionRows(
       continue;
     }
 
-    const netProfit = parseAmount(getCell(row, header.map, "netProfit"));
-    if (netProfit == null) {
+    const netColumn = parseAmount(getCell(row, header.map, "netProfit"));
+    const grossProfit = parseAmount(getCell(row, header.map, "grossProfit"));
+    const value = parseAmount(getCell(row, header.map, "amount"));
+    const volume = parseAmount(getCell(row, header.map, "volume"));
+    const openTime = parseDate(getCell(row, header.map, "openTime"));
+    const openPrice = parseAmount(getCell(row, header.map, "openPrice"));
+
+    if (volume == null && value == null && netColumn == null && grossProfit == null) {
       continue;
     }
 
-    const grossProfit = parseAmount(getCell(row, header.map, "grossProfit"));
-    const value = parseAmount(getCell(row, header.map, "amount"));
-
     positions.push({
       symbol,
-      netProfit,
+      netProfit: netColumn ?? 0,
       grossProfit: grossProfit ?? undefined,
       value: value ?? undefined,
+      volume: volume ?? null,
+      openTime: openTime ?? null,
+      openPrice: openPrice ?? null,
       accountKind,
     });
   }
