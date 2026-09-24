@@ -12,6 +12,7 @@ import type {
   PortfolioMetrics,
   PortfolioReport,
 } from "../xtb/types";
+import { findInternalTransferKeys, isExternalTransfer } from "./transfers";
 import { xirr, type CashFlow } from "./xirr";
 
 type TimelineEvent = {
@@ -29,20 +30,14 @@ function formatChartLabel(date: Date): string {
   }).format(date);
 }
 
-function inboundTransfer(operation: CashOperation): boolean {
-  return (
-    operation.kind === "transfer" &&
-    operation.amount > 0 &&
-    !isSubaccountTransfer(operation.rawType)
-  );
-}
-
-function outboundTransfer(operation: CashOperation): boolean {
-  return (
-    operation.kind === "transfer" &&
-    operation.amount < 0 &&
-    !isSubaccountTransfer(operation.rawType)
-  );
+function shouldCountTransferAsExternal(
+  operation: CashOperation,
+  treatTransfersAsExternal: boolean,
+  internalKeys: Set<string>,
+): boolean {
+  // Pojedyncze konto: każdy niesubkontowy transfer jest zewnętrzny.
+  // Wiele kont: tylko niesparowane (np. USD) są zewnętrzne.
+  return isExternalTransfer(operation, treatTransfersAsExternal ? new Set() : internalKeys);
 }
 
 function buildEvents(
@@ -50,6 +45,9 @@ function buildEvents(
   treatTransfersAsExternal: boolean,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
+  const internalKeys = treatTransfersAsExternal
+    ? new Set<string>()
+    : findInternalTransferKeys(parsed.cashOperations);
 
   for (const operation of parsed.cashOperations) {
     if (operation.kind === "deposit") {
@@ -72,23 +70,22 @@ function buildEvents(
       continue;
     }
 
-    if (treatTransfersAsExternal && inboundTransfer(operation)) {
-      events.push({
-        time: operation.time,
-        depositDelta: Math.abs(operation.amount),
-        withdrawalDelta: 0,
-        profitDelta: 0,
-      });
-      continue;
-    }
-
-    if (treatTransfersAsExternal && outboundTransfer(operation)) {
-      events.push({
-        time: operation.time,
-        depositDelta: 0,
-        withdrawalDelta: Math.abs(operation.amount),
-        profitDelta: 0,
-      });
+    if (shouldCountTransferAsExternal(operation, treatTransfersAsExternal, internalKeys)) {
+      if (operation.amount > 0) {
+        events.push({
+          time: operation.time,
+          depositDelta: Math.abs(operation.amount),
+          withdrawalDelta: 0,
+          profitDelta: 0,
+        });
+      } else {
+        events.push({
+          time: operation.time,
+          depositDelta: 0,
+          withdrawalDelta: Math.abs(operation.amount),
+          profitDelta: 0,
+        });
+      }
       continue;
     }
 
@@ -274,16 +271,21 @@ function investorCashFlows(
   treatTransfersAsExternal: boolean,
 ): CashFlow[] {
   const flows: CashFlow[] = [];
+  const internalKeys = treatTransfersAsExternal
+    ? new Set<string>()
+    : findInternalTransferKeys(cashOperations);
 
   for (const operation of cashOperations) {
     if (operation.kind === "deposit") {
       flows.push({ date: operation.time, amount: -Math.abs(operation.amount) });
     } else if (operation.kind === "withdrawal") {
       flows.push({ date: operation.time, amount: Math.abs(operation.amount) });
-    } else if (treatTransfersAsExternal && inboundTransfer(operation)) {
-      flows.push({ date: operation.time, amount: -Math.abs(operation.amount) });
-    } else if (treatTransfersAsExternal && outboundTransfer(operation)) {
-      flows.push({ date: operation.time, amount: Math.abs(operation.amount) });
+    } else if (shouldCountTransferAsExternal(operation, treatTransfersAsExternal, internalKeys)) {
+      if (operation.amount > 0) {
+        flows.push({ date: operation.time, amount: -Math.abs(operation.amount) });
+      } else {
+        flows.push({ date: operation.time, amount: Math.abs(operation.amount) });
+      }
     }
   }
 
@@ -497,6 +499,18 @@ export function analyzePortfolio(
     warnings.push(
       `Nierozpoznane typy operacji (${unknown.length}): ${examples.join(", ")}. Nie wliczono ich do wpłat ani zysku.`,
     );
+  }
+  if (!treatTransfersAsExternal) {
+    const internalKeys = findInternalTransferKeys(parsed.cashOperations);
+    const externalTransfers = parsed.cashOperations.filter((operation) =>
+      isExternalTransfer(operation, internalKeys),
+    );
+    if (externalTransfers.length > 0) {
+      const externalSum = externalTransfers.reduce((sum, operation) => sum + operation.amount, 0);
+      warnings.push(
+        `Wykryto ${externalTransfers.length} transfer(ów) poza wgrane konta (np. USD lub inny rachunek). Wliczono je do kapitału netto (saldo: ${externalSum.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł).`,
+      );
+    }
   }
   if (
     parsed.closedPositions.length === 0 &&
