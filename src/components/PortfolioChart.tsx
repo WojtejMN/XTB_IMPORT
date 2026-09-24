@@ -455,8 +455,9 @@ export function PortfolioChart({
 
       {dataView === "value" ? (
         <p className="mt-3 text-xs text-muted">
-          Niebieskie kropki = wpłaty, czerwone = wypłaty. Wartość historyczna jest szacowana —
-          bieżąca wartość otwartych pozycji pochodzi z eksportu.
+          Niebieskie kropki = wpłaty, czerwone = wypłaty. Po synchronizacji cen GPW wykres może
+          używać dziennych notowań z bazy (gotówka + MTM). Instrumenty spoza PLN zostają na
+          szacunku z historii XTB.
         </p>
       ) : null}
 

@@ -164,8 +164,10 @@ Historia transakcji XTB nadal nie opuszcza przeglądarki. Na serwer idą wyłąc
 
 - `src/lib/xtb` — parser i klasyfikacja
 - `src/lib/analysis` — portfel i XIRR
-- `src/lib/prices` — mapowanie tickerów, luki dat, sync Yahoo → Supabase
+- `src/lib/prices` — mapowanie tickerów, luki dat, sync Yahoo → Supabase, odczyt cen
 - `src/app/api/prices/sync` — endpoint synchronizacji cen
+- `src/app/api/prices` — odczyt dziennych cen z `asset_prices`
+- `src/lib/analysis/market-value.ts` — wykres gotówka + MTM (GPW `.PL`)
 - `src/components` — dropzone, wykres, karty
 - `Rules` — zasady kodu i testów
 - `src/**/*.test.ts` — testy jednostkowe
