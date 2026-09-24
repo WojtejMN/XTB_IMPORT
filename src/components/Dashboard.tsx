@@ -6,6 +6,8 @@ import {
   analyzePerAccountCharts,
   analyzePortfolio,
 } from "@/lib/analysis/portfolio";
+import { requestPriceSync } from "@/lib/prices/client";
+import { collectTickerStartDatesFromFiles } from "@/lib/prices/ticker-requests";
 import { stampAccountKind } from "@/lib/xtb/account";
 import { emptyFileNotice, partitionImportedFiles } from "@/lib/xtb/import";
 import { mergeParsedFiles } from "@/lib/xtb/merge";
@@ -35,6 +37,7 @@ export function Dashboard() {
   const [selected, setSelected] = useState<AccountKind[]>(["standard", "ike", "ikze"]);
   const [error, setError] = useState<string | null>(null);
   const [importNotices, setImportNotices] = useState<string[]>([]);
+  const [priceSyncNotice, setPriceSyncNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const available = useMemo(
@@ -90,10 +93,36 @@ export function Dashboard() {
     document.getElementById("wyniki")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [imports]);
 
+  async function syncPricesForFiles(files: ParsedXtbFile[]) {
+    const items = collectTickerStartDatesFromFiles(files);
+    if (items.length === 0) {
+      setPriceSyncNotice(null);
+      return;
+    }
+
+    setPriceSyncNotice(`Synchronizacja cen dla ${items.length} ticker(ów)…`);
+    try {
+      const result = await requestPriceSync(items);
+      const parts = [
+        result.fetchedTickers > 0 ? `pobrano ${result.fetchedTickers}` : null,
+        result.skippedTickers > 0 ? `aktualne ${result.skippedTickers}` : null,
+        result.errorTickers > 0 ? `błędy ${result.errorTickers}` : null,
+      ].filter(Boolean);
+      setPriceSyncNotice(`Ceny rynkowe: ${parts.join(" · ") || "brak zmian"}.`);
+    } catch (syncError) {
+      setPriceSyncNotice(
+        syncError instanceof Error
+          ? `Nie udało się zsynchronizować cen: ${syncError.message}`
+          : "Nie udało się zsynchronizować cen rynkowych.",
+      );
+    }
+  }
+
   async function handleFiles(files: File[]) {
     setBusy(true);
     setError(null);
     setImportNotices([]);
+    setPriceSyncNotice(null);
     try {
       const parsed = await Promise.all(files.map((file) => parseXtbFile(file)));
       const { accepted, skippedEmpty, rejected } = partitionImportedFiles(parsed);
@@ -116,6 +145,9 @@ export function Dashboard() {
       if (rejected.length > 0) {
         setError(`Pominięto ${rejected.length} plik(i) bez rozpoznanej historii XTB.`);
       }
+
+      // Tylko tickery + daty startu — bez wysyłania historii transakcji.
+      void syncPricesForFiles(accepted);
     } catch {
       setError("Nie udało się odczytać pliku. Spróbuj XLSX albo CSV z xStation.");
     } finally {
@@ -170,6 +202,7 @@ export function Dashboard() {
               setImports([]);
               setError(null);
               setImportNotices([]);
+              setPriceSyncNotice(null);
             }}
           />
 
@@ -180,6 +213,7 @@ export function Dashboard() {
               onClick={() => {
                 setError(null);
                 setImportNotices([]);
+                setPriceSyncNotice(null);
                 setSelected(["standard", "ike", "ikze"]);
                 setImports(sampleAccounts());
               }}
@@ -204,6 +238,12 @@ export function Dashboard() {
                 <p key={notice}>{notice}</p>
               ))}
             </div>
+          ) : null}
+
+          {priceSyncNotice ? (
+            <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+              {priceSyncNotice}
+            </p>
           ) : null}
 
           {error ? (
