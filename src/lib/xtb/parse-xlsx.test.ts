@@ -265,10 +265,12 @@ describe("parseXlsxBuffer", () => {
     expect(parsed.openPositionsValue).toBeCloseTo(3784.13, 5);
     expect(parsed.openPositions).toHaveLength(1);
     expect(parsed.openPositions?.[0]?.symbol).toBe("ACM.PL");
+    expect(parsed.openPositions?.[0]?.volume).toBe(9);
     expect(parsed.openPositions?.[0]?.netProfit).toBeCloseTo(538, 5);
     expect(parsed.closedPositions).toHaveLength(1);
-    expect(parsed.closedPositions[0]?.symbol).toBe("Acme");
+    expect(parsed.closedPositions[0]?.symbol).toBe("ACM.PL");
     expect(parsed.closedPositions[0]?.netProfit).toBeCloseTo(15.68, 5);
+    expect(parsed.cashOperations.find((row) => row.kind === "purchase")?.symbol).toBe("ACM.PL");
     expect(parsed.cashOperations.map((row) => row.kind)).toEqual([
       "transfer",
       "purchase",

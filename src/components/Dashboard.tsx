@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   enrichChartWithMarketPrices,
   groupPricesByTicker,
+  mergeAssetPriceRows,
 } from "@/lib/analysis/market-value";
 import {
   analyzeAccountBreakdown,
@@ -13,6 +14,7 @@ import {
 import { requestAssetPrices, requestPriceSync } from "@/lib/prices/client";
 import type { AssetPriceRow } from "@/lib/prices/supabase";
 import { collectTickerStartDatesFromFiles } from "@/lib/prices/ticker-requests";
+import { isPlnMarketTicker } from "@/lib/prices/yahoo-ticker";
 import { stampAccountKind } from "@/lib/xtb/account";
 import { emptyFileNotice, partitionImportedFiles } from "@/lib/xtb/import";
 import { mergeParsedFiles } from "@/lib/xtb/merge";
@@ -129,22 +131,38 @@ export function Dashboard() {
         result.errorTickers > 0 ? `błędy ${result.errorTickers}` : null,
       ].filter(Boolean);
 
+      const persistWarnings = result.results
+        .map((entry) => entry.message)
+        .filter((message): message is string => Boolean(message && message.includes("zapis")));
+
       const from = items.reduce(
         (min, item) => (item.startDate < min ? item.startDate : min),
         items[0]!.startDate,
       );
-      const rows = await requestAssetPrices({
-        tickers: items.map((item) => item.xtbTicker),
-        from,
-      });
-      setAssetPrices(rows);
 
-      const gpwTickers = items.filter((item) => item.xtbTicker.endsWith(".PL")).length;
-      setPriceSyncNotice(
-        `Ceny rynkowe: ${parts.join(" · ") || "brak zmian"} · ${rows.length} notowań` +
-          (gpwTickers > 0 ? ` · MTM dla GPW (${gpwTickers} tickerów)` : "") +
-          ".",
-      );
+      let fromDb: AssetPriceRow[] = [];
+      try {
+        fromDb = await requestAssetPrices({
+          tickers: items.map((item) => item.xtbTicker),
+          from,
+        });
+      } catch {
+        // Brak SELECT w Supabase — użyjemy cen zwróconych z Yahoo w odpowiedzi sync.
+      }
+
+      const mergedPrices = mergeAssetPriceRows(fromDb, result.prices ?? []);
+      setAssetPrices(mergedPrices);
+
+      const gpwTickers = items.filter((item) => isPlnMarketTicker(item.xtbTicker)).length;
+      const noticeParts = [
+        `Ceny rynkowe: ${parts.join(" · ") || "brak zmian"}`,
+        `${mergedPrices.length} notowań`,
+        gpwTickers > 0 ? `MTM GPW (${gpwTickers} tickerów)` : null,
+        persistWarnings.length > 0
+          ? "brak zapisu do Supabase — wykres i tak używa Yahoo (dodaj SERVICE_ROLE_KEY)"
+          : null,
+      ].filter(Boolean);
+      setPriceSyncNotice(`${noticeParts.join(" · ")}.`);
     } catch (syncError) {
       setAssetPrices([]);
       setPriceSyncNotice(
@@ -339,6 +357,7 @@ export function Dashboard() {
               perAccount={marketChart ? undefined : perAccountCharts}
               selectedAccounts={activeSelection}
               availableAccounts={available}
+              marketMarked={Boolean(marketChart)}
               onSelectedAccountsChange={(kinds) => {
                 if (kinds.length === 0) {
                   return;

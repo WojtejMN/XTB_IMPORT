@@ -1,6 +1,6 @@
 import { duplicatesClosedPositionPnl, isSubaccountTransfer } from "../xtb/classify";
 import type { AssetPriceRow } from "../prices/supabase";
-import { guessCurrencyFromXtbTicker } from "../prices/yahoo-ticker";
+import { isPlnMarketTicker } from "../prices/yahoo-ticker";
 import type { CashOperation, ChartPoint, ParsedXtbFile } from "../xtb/types";
 import { findInternalTransferKeys, isExternalTransfer } from "./transfers";
 
@@ -46,9 +46,9 @@ export function priceOnOrBefore(
 }
 
 /**
- * Loty akcji do wyceny MTM.
- * Zamknięte: volume z arkusza Closed Positions.
- * Otwarte (.PL): volume ≈ value / ostatnia cena (gdy value i cena dostępne).
+ * Loty akcji GPW do wyceny MTM.
+ * Zamknięte: volume z Closed Positions.
+ * Otwarte: volume z Open Positions (albo value / ostatnia cena).
  */
 export function buildShareLots(
   parsed: ParsedXtbFile,
@@ -59,10 +59,7 @@ export function buildShareLots(
 
   for (const position of parsed.closedPositions) {
     const ticker = position.symbol.trim().toUpperCase();
-    if (!ticker || position.volume == null || position.volume <= 0) {
-      continue;
-    }
-    if (guessCurrencyFromXtbTicker(ticker) !== "PLN") {
+    if (!ticker || !isPlnMarketTicker(ticker) || position.volume == null || position.volume <= 0) {
       continue;
     }
     const openMs = (position.openTime ?? position.closeTime).getTime();
@@ -76,23 +73,29 @@ export function buildShareLots(
 
   for (const position of parsed.openPositions ?? []) {
     const ticker = position.symbol.trim().toUpperCase();
-    if (!ticker || position.value == null || position.value <= 0) {
+    if (!ticker || !isPlnMarketTicker(ticker)) {
       continue;
     }
-    if (guessCurrencyFromXtbTicker(ticker) !== "PLN") {
+
+    let volume = position.volume != null && position.volume > 0 ? position.volume : null;
+    if (volume == null && position.value != null && position.value > 0) {
+      const lastPrice = latestPrices[ticker];
+      if (lastPrice != null && lastPrice > 0) {
+        volume = position.value / lastPrice;
+      }
+    }
+    if (volume == null || !Number.isFinite(volume) || volume <= 0) {
       continue;
     }
-    const lastPrice = latestPrices[ticker];
-    if (lastPrice == null || lastPrice <= 0) {
-      continue;
-    }
-    const volume = position.value / lastPrice;
-    if (!Number.isFinite(volume) || volume <= 0) {
-      continue;
-    }
+
+    const openMs =
+      position.openTime?.getTime() ??
+      openFromMs[ticker] ??
+      Date.now();
+
     lots.push({
       ticker,
-      openMs: openFromMs[ticker] ?? Date.now(),
+      openMs,
       closeMs: null,
       volume,
     });
@@ -124,6 +127,9 @@ export function earliestActivityByTicker(parsed: ParsedXtbFile): Record<string, 
   }
   for (const position of parsed.closedPositions) {
     bump(position.symbol, position.openTime ?? position.closeTime);
+  }
+  for (const position of parsed.openPositions ?? []) {
+    bump(position.symbol, position.openTime ?? undefined);
   }
   return map;
 }
@@ -247,6 +253,10 @@ function netCapitalAt(
   return { deposits, withdrawals };
 }
 
+/**
+ * Oś czasu MTM: dni sesyjne z cen + zdarzenia gotówkowe/pozycji.
+ * Dzięki dniom sesyjnym wykres „faluje” codziennie, a nie tylko przy transakcjach.
+ */
 function collectTimelineMs(parsed: ParsedXtbFile, prices: PricesByTicker): number[] {
   const times = new Set<number>();
 
@@ -259,10 +269,15 @@ function collectTimelineMs(parsed: ParsedXtbFile, prices: PricesByTicker): numbe
     }
     times.add(position.closeTime.getTime());
   }
+  for (const position of parsed.openPositions ?? []) {
+    if (position.openTime) {
+      times.add(position.openTime.getTime());
+    }
+  }
 
   for (const rows of Object.values(prices)) {
     for (const row of rows) {
-      times.add(Date.parse(`${row.date}T12:00:00.000Z`));
+      times.add(Date.parse(`${row.date}T16:00:00.000Z`));
     }
   }
 
@@ -276,8 +291,7 @@ export type MarketChartResult = {
 };
 
 /**
- * Buduje wykres wartości portfela: saldo gotówki + MTM pozycji GPW (.PL)
- * z dziennych cen Supabase. Bez lotów / cen wraca do wykresu bazowego.
+ * Wartość = saldo gotówki + Σ(liczba akcji × close z asset_prices) na każdy dzień sesyjny.
  */
 export function enrichChartWithMarketPrices(
   baseChart: ChartPoint[],
@@ -290,7 +304,8 @@ export function enrichChartWithMarketPrices(
   const openFrom = earliestActivityByTicker(parsed);
   const lots = buildShareLots(parsed, latest, openFrom);
 
-  if (lots.length === 0 || Object.keys(prices).length === 0) {
+  const hasAnyPrices = Object.values(prices).some((rows) => rows.length > 0);
+  if (lots.length === 0 || !hasAnyPrices) {
     return { chart: baseChart, usedMarket: false, pricedLots: 0 };
   }
 
@@ -309,8 +324,23 @@ export function enrichChartWithMarketPrices(
     }
   }
 
+  // Markery wpłat po dniu (gdy oś jest gęsta od cen).
+  const depositByDay = new Map<string, { deposit: number; withdrawal: number }>();
+  for (const point of baseChart) {
+    if (point.depositDelta <= 0 && point.withdrawalDelta <= 0) {
+      continue;
+    }
+    const day = toIsoDay(point.time);
+    const prev = depositByDay.get(day) ?? { deposit: 0, withdrawal: 0 };
+    depositByDay.set(day, {
+      deposit: prev.deposit + point.depositDelta,
+      withdrawal: prev.withdrawal + point.withdrawalDelta,
+    });
+  }
+
   const chart: ChartPoint[] = [];
   let usedMarket = false;
+  const emittedDepositDays = new Set<string>();
 
   for (const time of timeline) {
     const holdings = holdingsValueAt(time, lots, prices);
@@ -333,7 +363,21 @@ export function enrichChartWithMarketPrices(
     const netCapital = deposits - withdrawals;
     const investedCapital = Math.max(0, netCapital);
     const portfolioValue = Math.max(0, cash + holdings);
-    const markers = depositMarkers.get(time) ?? { deposit: 0, withdrawal: 0 };
+
+    const day = toIsoDay(time);
+    const exact = depositMarkers.get(time);
+    let depositDelta = exact?.deposit ?? 0;
+    let withdrawalDelta = exact?.withdrawal ?? 0;
+    if (!exact && !emittedDepositDays.has(day)) {
+      const byDay = depositByDay.get(day);
+      if (byDay) {
+        depositDelta = byDay.deposit;
+        withdrawalDelta = byDay.withdrawal;
+        emittedDepositDays.add(day);
+      }
+    } else if (exact) {
+      emittedDepositDays.add(day);
+    }
 
     const point: ChartPoint = {
       time,
@@ -342,8 +386,8 @@ export function enrichChartWithMarketPrices(
       portfolioValue,
       investedCapital,
       cumulativeGain: Math.max(0, portfolioValue - investedCapital),
-      depositDelta: markers.deposit,
-      withdrawalDelta: markers.withdrawal,
+      depositDelta,
+      withdrawalDelta,
     };
 
     const last = chart[chart.length - 1];
@@ -379,4 +423,19 @@ export function groupPricesByTicker(rows: AssetPriceRow[]): PricesByTicker {
     map[ticker]!.sort((a, b) => a.date.localeCompare(b.date));
   }
   return map;
+}
+
+export function mergeAssetPriceRows(...groups: AssetPriceRow[][]): AssetPriceRow[] {
+  const map = new Map<string, AssetPriceRow>();
+  for (const rows of groups) {
+    for (const row of rows) {
+      map.set(`${row.ticker.toUpperCase()}|${row.date}`, {
+        ...row,
+        ticker: row.ticker.toUpperCase(),
+      });
+    }
+  }
+  return [...map.values()].sort((a, b) =>
+    a.ticker === b.ticker ? a.date.localeCompare(b.date) : a.ticker.localeCompare(b.ticker),
+  );
 }

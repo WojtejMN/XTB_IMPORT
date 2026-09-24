@@ -72,4 +72,61 @@ describe("collectTickerStartDates", () => {
       { xtbTicker: "CDR.PL", startDate: "2023-05-18" },
     ]);
   });
+
+  it("pomija CFD/krypto i EUR.PL", () => {
+    const parsed = file({
+      cashOperations: [
+        {
+          id: "1",
+          kind: "purchase",
+          rawType: "Stock purchase",
+          time: new Date("2024-07-12T10:00:00Z"),
+          comment: "",
+          symbol: "GOLD",
+          amount: -100,
+          accountKind: "standard",
+        },
+        {
+          id: "2",
+          kind: "purchase",
+          rawType: "Stock purchase",
+          time: new Date("2024-07-12T10:00:00Z"),
+          comment: "",
+          symbol: "EUR.PL",
+          amount: -50,
+          accountKind: "standard",
+        },
+        {
+          id: "3",
+          kind: "purchase",
+          rawType: "Stock purchase",
+          time: new Date("2024-07-12T10:00:00Z"),
+          comment: "",
+          symbol: "SXRV.DE",
+          amount: -200,
+          accountKind: "standard",
+        },
+      ],
+      openPositions: [
+        {
+          symbol: "DOGECOIN",
+          netProfit: -1,
+          volume: 10,
+          accountKind: "standard",
+        },
+        {
+          symbol: "CDR.PL",
+          netProfit: 100,
+          volume: 5,
+          openTime: new Date("2024-08-01T10:00:00Z"),
+          accountKind: "standard",
+        },
+      ],
+    });
+
+    expect(collectTickerStartDates(parsed)).toEqual([
+      { xtbTicker: "CDR.PL", startDate: "2024-08-01" },
+      { xtbTicker: "SXRV.DE", startDate: "2024-07-12" },
+    ]);
+  });
 });
