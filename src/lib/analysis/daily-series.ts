@@ -1,5 +1,5 @@
 import { isSubaccountTransfer } from "../xtb/classify";
-import { isPlnMarketTicker } from "../prices/yahoo-ticker";
+import { isMarketPriceTicker, isPlnMarketTicker } from "../prices/yahoo-ticker";
 import type { AssetPriceRow } from "../prices/supabase";
 import { mergeParsedFiles } from "../xtb/merge";
 import type {
@@ -77,12 +77,41 @@ function isWithdrawalFlow(operation: CashOperation): boolean {
   return operation.kind === "withdrawal";
 }
 
-function buildValuationLots(parsed: ParsedXtbFile): ValuationLot[] {
+function normalizeTicker(symbol: string): string {
+  return symbol.trim().toUpperCase();
+}
+
+/** Symbole, których kupno i sprzedaż widać w gotówce (akcje/ETF-y). */
+function cashTradedSymbols(operations: CashOperation[]): Set<string> {
+  const symbols = new Set<string>();
+  for (const operation of operations) {
+    if (operation.kind !== "purchase" && operation.kind !== "sale") {
+      continue;
+    }
+    const ticker = normalizeTicker(operation.symbol);
+    if (ticker) {
+      symbols.add(ticker);
+    }
+  }
+  return symbols;
+}
+
+/**
+ * Loty wyceniane osobno od gotówki.
+ *
+ * Bierzemy tylko pozycje, za które gotówka faktycznie wyszła z rachunku:
+ * zamknięte pozycje z legą kasową oraz otwarte pozycje w akcjach/ETF-ach.
+ * CFD i krypto działają na depozycie — ich wynik wchodzi przez P/L, nie przez wartość.
+ */
+function buildValuationLots(parsed: ParsedXtbFile, cashTraded: Set<string>): ValuationLot[] {
   const lots: ValuationLot[] = [];
 
   for (const position of parsed.closedPositions) {
-    const ticker = position.symbol.trim().toUpperCase();
+    const ticker = normalizeTicker(position.symbol);
     if (!ticker || position.volume == null || position.volume <= 0) {
+      continue;
+    }
+    if (!cashTraded.has(ticker)) {
       continue;
     }
     const openMs = (position.openTime ?? position.closeTime).getTime();
@@ -97,8 +126,8 @@ function buildValuationLots(parsed: ParsedXtbFile): ValuationLot[] {
   }
 
   for (const position of parsed.openPositions ?? []) {
-    const ticker = position.symbol.trim().toUpperCase();
-    if (!ticker) {
+    const ticker = normalizeTicker(position.symbol);
+    if (!ticker || !isMarketPriceTicker(ticker)) {
       continue;
     }
 
@@ -125,6 +154,20 @@ function buildValuationLots(parsed: ParsedXtbFile): ValuationLot[] {
   }
 
   return lots;
+}
+
+/**
+ * P/L pozycji, których nie widać w gotówce (CFD, krypto) — dopisujemy
+ * w dniu zamknięcia. Dla akcji zysk jest już w cenie sprzedaży.
+ */
+function realizedPnlEvents(
+  parsed: ParsedXtbFile,
+  cashTraded: Set<string>,
+): Array<{ ms: number; amount: number }> {
+  return parsed.closedPositions
+    .filter((position) => !cashTraded.has(normalizeTicker(position.symbol)))
+    .map((position) => ({ ms: position.closeTime.getTime(), amount: position.netProfit }))
+    .sort((a, b) => a.ms - b.ms);
 }
 
 function lotPriceAt(lot: ValuationLot, isoDay: string, prices: PricesByTicker): number | null {
@@ -154,6 +197,60 @@ function holdingsValueAt(timeMs: number, isoDay: string, lots: ValuationLot[], p
     total += lot.volume * price;
   }
   return total;
+}
+
+/**
+ * Akcje kupione za gotówkę, których nie ma w arkuszach pozycji.
+ *
+ * Z notowaniami: ilość = kwota / kurs z dnia transakcji, wycena po kursie bieżącym.
+ * Bez notowań: trzymamy koszt zakupu (sprzedaż zdejmuje go z powrotem,
+ * a zysk zostaje w gotówce).
+ */
+class SyntheticHoldings {
+  private readonly quantities = new Map<string, number>();
+
+  constructor(
+    private readonly covered: Set<string>,
+    private readonly prices: PricesByTicker,
+  ) {}
+
+  private hasPrices(ticker: string): boolean {
+    return (this.prices[ticker]?.length ?? 0) > 0;
+  }
+
+  apply(operation: CashOperation, isoDay: string): void {
+    if (operation.kind !== "purchase" && operation.kind !== "sale") {
+      return;
+    }
+    const ticker = normalizeTicker(operation.symbol);
+    if (!ticker || this.covered.has(ticker) || !isMarketPriceTicker(ticker)) {
+      return;
+    }
+
+    const amount = Math.abs(operation.amount);
+    if (amount === 0) {
+      return;
+    }
+
+    const unitPrice = this.hasPrices(ticker) ? priceOnOrBefore(this.prices[ticker], isoDay) : null;
+    const units = unitPrice != null && unitPrice > 0 ? amount / unitPrice : amount;
+    const current = this.quantities.get(ticker) ?? 0;
+    const next = operation.kind === "purchase" ? current + units : current - units;
+    this.quantities.set(ticker, Math.max(0, next));
+  }
+
+  valueAt(isoDay: string): number {
+    let total = 0;
+    for (const [ticker, quantity] of this.quantities) {
+      if (quantity <= 0) {
+        continue;
+      }
+      const price = this.hasPrices(ticker) ? priceOnOrBefore(this.prices[ticker], isoDay) : null;
+      // Bez notowań jednostką jest złotówka kosztu, więc mnożnik wynosi 1.
+      total += price != null && price > 0 ? quantity * price : quantity;
+    }
+    return total;
+  }
 }
 
 function lastPriceDayMs(prices: PricesByTicker): number | null {
@@ -187,7 +284,10 @@ export function buildDailySeries(
   const operations = [...parsed.cashOperations].sort(
     (a, b) => a.time.getTime() - b.time.getTime(),
   );
-  const lots = buildValuationLots(parsed);
+  const cashTraded = cashTradedSymbols(operations);
+  const lots = buildValuationLots(parsed, cashTraded);
+  const pnlEvents = realizedPnlEvents(parsed, cashTraded);
+  const lotTickers = new Set(lots.map((lot) => lot.ticker));
 
   if (operations.length === 0 && lots.length === 0) {
     return [];
@@ -195,6 +295,7 @@ export function buildDailySeries(
 
   const eventTimes: number[] = [
     ...operations.map((operation) => operation.time.getTime()),
+    ...pnlEvents.map((event) => event.ms),
     ...lots.filter((lot) => Number.isFinite(lot.openMs)).map((lot) => lot.openMs),
     ...lots
       .map((lot) => lot.closeMs)
@@ -215,15 +316,23 @@ export function buildDailySeries(
 
   const series: DailySeriesPoint[] = [];
   let cursor = 0;
+  let pnlCursor = 0;
   let cash = 0;
   let deposits = 0;
   let withdrawals = 0;
+  // Akcje kupione za gotówkę, których nie ma w arkuszach pozycji.
+  const synthetic = new SyntheticHoldings(lotTickers, prices);
 
   for (let dayMs = dayStartMs(toIsoDay(firstMs)); dayMs <= lastMs; dayMs += DAY_MS) {
     const isoDay = toIsoDay(dayMs);
     const cutoff = dayEndMs(isoDay);
     let depositDelta = 0;
     let withdrawalDelta = 0;
+
+    while (pnlCursor < pnlEvents.length && pnlEvents[pnlCursor]!.ms <= cutoff) {
+      cash += pnlEvents[pnlCursor]!.amount;
+      pnlCursor += 1;
+    }
 
     while (cursor < operations.length && operations[cursor]!.time.getTime() <= cutoff) {
       const operation = operations[cursor]!;
@@ -266,9 +375,11 @@ export function buildDailySeries(
 
       // Zakupy, sprzedaże, dywidendy, podatki, odsetki, P/L — realne ruchy gotówki.
       cash += operation.amount;
+      synthetic.apply(operation, isoDay);
     }
 
-    const holdings = holdingsValueAt(cutoff, isoDay, lots, prices);
+    const holdings =
+      holdingsValueAt(cutoff, isoDay, lots, prices) + synthetic.valueAt(isoDay);
     const netCapital = deposits - withdrawals;
     const portfolioValue = cash + holdings;
 

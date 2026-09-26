@@ -142,6 +142,93 @@ describe("buildDailySeries", () => {
     expect(last.totalProfit).toBeCloseTo(200, 5);
   });
 
+  it("trzyma wartość akcji kupionych gotówką bez wiersza pozycji", () => {
+    const parsed = file({
+      cashOperations: [
+        cash({ kind: "deposit", time: new Date("2024-04-01T10:00:00Z"), amount: 5_000 }),
+        cash({ kind: "purchase", time: new Date("2024-04-02T10:00:00Z"), amount: -2_000, symbol: "PZU.PL" }),
+        cash({ kind: "dividend", time: new Date("2024-04-05T10:00:00Z"), amount: 55, symbol: "PZU.PL" }),
+      ],
+    });
+
+    const last = buildDailySeries(parsed).at(-1)!;
+
+    // 3055 gotówki + 2000 kosztu wciąż trzymanych akcji
+    expect(last.portfolioValue).toBeCloseTo(5_055, 5);
+    expect(last.netCapital).toBeCloseTo(5_000, 5);
+    expect(last.totalProfit).toBeCloseTo(55, 5);
+  });
+
+  it("wycenia akcje bez wiersza pozycji po kursie, gdy są notowania", () => {
+    const parsed = file({
+      cashOperations: [
+        cash({ kind: "deposit", time: new Date("2024-04-01T10:00:00Z"), amount: 5_000 }),
+        cash({ kind: "purchase", time: new Date("2024-04-02T10:00:00Z"), amount: -2_000, symbol: "PZU.PL" }),
+      ],
+    });
+    const prices = groupPricesByTicker([
+      { ticker: "PZU.PL", date: "2024-04-02", close_price: 50, currency: "PLN" },
+      { ticker: "PZU.PL", date: "2024-04-03", close_price: 55, currency: "PLN" },
+    ]);
+
+    const last = buildDailySeries(parsed, prices).at(-1)!;
+
+    // 40 akcji po 50 zł → po kursie 55 zł warte 2200
+    expect(last.portfolioValue).toBeCloseTo(3_000 + 2_200, 5);
+    expect(last.totalProfit).toBeCloseTo(200, 5);
+  });
+
+  it("nie dolicza wartości pozycji CFD, tylko jej wynik", () => {
+    const parsed = file({
+      cashOperations: [
+        cash({ kind: "deposit", time: new Date("2024-05-01T10:00:00Z"), amount: 1_000 }),
+      ],
+      closedPositions: [
+        closed({
+          symbol: "GOLD",
+          volume: 1,
+          openPrice: 2_000,
+          openTime: new Date("2024-05-02T10:00:00Z"),
+          closeTime: new Date("2024-05-10T10:00:00Z"),
+          netProfit: 120,
+        }),
+      ],
+    });
+
+    const series = buildDailySeries(parsed);
+
+    // W trakcie trwania pozycji depozyt nie zmienia wartości portfela.
+    expect(at(series, "2024-05-05").portfolioValue).toBeCloseTo(1_000, 5);
+    // Po zamknięciu do gotówki wpada sam wynik.
+    expect(series.at(-1)!.portfolioValue).toBeCloseTo(1_120, 5);
+    expect(series.at(-1)!.totalProfit).toBeCloseTo(120, 5);
+  });
+
+  it("nie dubluje zysku akcji, gdy jest i lega kasowa, i zamknięta pozycja", () => {
+    const parsed = file({
+      cashOperations: [
+        cash({ kind: "deposit", time: new Date("2024-06-01T10:00:00Z"), amount: 1_000 }),
+        cash({ kind: "purchase", time: new Date("2024-06-02T10:00:00Z"), amount: -1_000, symbol: "CDR.PL" }),
+        cash({ kind: "sale", time: new Date("2024-06-10T10:00:00Z"), amount: 1_200, symbol: "CDR.PL" }),
+      ],
+      closedPositions: [
+        closed({
+          symbol: "CDR.PL",
+          volume: 10,
+          openPrice: 100,
+          openTime: new Date("2024-06-02T10:00:00Z"),
+          closeTime: new Date("2024-06-10T10:00:00Z"),
+          netProfit: 200,
+        }),
+      ],
+    });
+
+    const last = buildDailySeries(parsed).at(-1)!;
+
+    expect(last.portfolioValue).toBeCloseTo(1_200, 5);
+    expect(last.totalProfit).toBeCloseTo(200, 5);
+  });
+
   it("wycenia pozycję po koszcie, gdy brak notowań", () => {
     const parsed = file({
       cashOperations: [
