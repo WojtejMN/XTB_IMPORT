@@ -11,8 +11,9 @@ export function PrivacySection() {
         </h2>
         <div className="mt-4 grid gap-6 text-sm leading-6 text-muted md:grid-cols-2">
           <p>
-            Parser i wykres działają lokalnie w przeglądarce. Nie logujemy Cię, nie prosimy o e-mail
-            i nie zapisujemy pliku XTB na serwerze. To celowe — wyciąg z rachunku to dane wrażliwe.
+            Parser i wykres działają lokalnie w przeglądarce. Nie wymagamy konta. E-mail zapisujemy
+            tylko wtedy, gdy sam zapiszesz się na newsletter. Pliku XTB nigdy nie wysyłamy na
+            serwer.
           </p>
           <p>
             Narzędzie nie jest produktem XTB i nie zastępuje informacji z xStation. Wyniki służą do

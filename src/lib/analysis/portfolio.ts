@@ -1,13 +1,18 @@
 import { duplicatesClosedPositionPnl, isProfitKind, isSubaccountTransfer } from "../xtb/classify";
+import { aggregateSymbolProfits } from "../xtb/symbol-profit";
+import { mergeParsedFiles } from "../xtb/merge";
 import type {
+  AccountBreakdown,
   AccountKind,
   AnalyzeOptions,
   CashOperation,
   ChartPoint,
   KindCounts,
   ParsedXtbFile,
+  PortfolioMetrics,
   PortfolioReport,
 } from "../xtb/types";
+import { findInternalTransferKeys, isExternalTransfer } from "./transfers";
 import { xirr, type CashFlow } from "./xirr";
 
 type TimelineEvent = {
@@ -25,20 +30,14 @@ function formatChartLabel(date: Date): string {
   }).format(date);
 }
 
-function inboundTransfer(operation: CashOperation): boolean {
-  return (
-    operation.kind === "transfer" &&
-    operation.amount > 0 &&
-    !isSubaccountTransfer(operation.rawType)
-  );
-}
-
-function outboundTransfer(operation: CashOperation): boolean {
-  return (
-    operation.kind === "transfer" &&
-    operation.amount < 0 &&
-    !isSubaccountTransfer(operation.rawType)
-  );
+function shouldCountTransferAsExternal(
+  operation: CashOperation,
+  treatTransfersAsExternal: boolean,
+  internalKeys: Set<string>,
+): boolean {
+  // Pojedyncze konto: każdy niesubkontowy transfer jest zewnętrzny.
+  // Wiele kont: tylko niesparowane (np. USD) są zewnętrzne.
+  return isExternalTransfer(operation, treatTransfersAsExternal ? new Set() : internalKeys);
 }
 
 function buildEvents(
@@ -46,6 +45,9 @@ function buildEvents(
   treatTransfersAsExternal: boolean,
 ): TimelineEvent[] {
   const events: TimelineEvent[] = [];
+  const internalKeys = treatTransfersAsExternal
+    ? new Set<string>()
+    : findInternalTransferKeys(parsed.cashOperations);
 
   for (const operation of parsed.cashOperations) {
     if (operation.kind === "deposit") {
@@ -68,23 +70,22 @@ function buildEvents(
       continue;
     }
 
-    if (treatTransfersAsExternal && inboundTransfer(operation)) {
-      events.push({
-        time: operation.time,
-        depositDelta: Math.abs(operation.amount),
-        withdrawalDelta: 0,
-        profitDelta: 0,
-      });
-      continue;
-    }
-
-    if (treatTransfersAsExternal && outboundTransfer(operation)) {
-      events.push({
-        time: operation.time,
-        depositDelta: 0,
-        withdrawalDelta: Math.abs(operation.amount),
-        profitDelta: 0,
-      });
+    if (shouldCountTransferAsExternal(operation, treatTransfersAsExternal, internalKeys)) {
+      if (operation.amount > 0) {
+        events.push({
+          time: operation.time,
+          depositDelta: Math.abs(operation.amount),
+          withdrawalDelta: 0,
+          profitDelta: 0,
+        });
+      } else {
+        events.push({
+          time: operation.time,
+          depositDelta: 0,
+          withdrawalDelta: Math.abs(operation.amount),
+          profitDelta: 0,
+        });
+      }
       continue;
     }
 
@@ -117,41 +118,147 @@ function buildEvents(
   return events.sort((a, b) => a.time.getTime() - b.time.getTime());
 }
 
-function buildChart(events: TimelineEvent[]): ChartPoint[] {
+type ChartBuildOptions = {
+  unrealizedAtEnd: number;
+  investmentStart: number | null;
+  investmentEnd: number;
+};
+
+function firstInvestmentTime(parsed: ParsedXtbFile): number | null {
+  let earliest: number | null = null;
+
+  for (const operation of parsed.cashOperations) {
+    if (operation.kind !== "purchase") {
+      continue;
+    }
+    const time = operation.time.getTime();
+    if (earliest == null || time < earliest) {
+      earliest = time;
+    }
+  }
+
+  for (const position of parsed.closedPositions) {
+    if (position.openTime == null) {
+      continue;
+    }
+    const time = position.openTime.getTime();
+    if (earliest == null || time < earliest) {
+      earliest = time;
+    }
+  }
+
+  return earliest;
+}
+
+function estimatedUnrealized(
+  time: number,
+  unrealizedAtEnd: number,
+  investmentStart: number | null,
+  investmentEnd: number,
+): number {
+  if (unrealizedAtEnd === 0) {
+    return 0;
+  }
+  if (investmentStart == null || investmentEnd <= investmentStart) {
+    return time >= investmentEnd ? unrealizedAtEnd : 0;
+  }
+  if (time <= investmentStart) {
+    return 0;
+  }
+  if (time >= investmentEnd) {
+    return unrealizedAtEnd;
+  }
+  const fraction = (time - investmentStart) / (investmentEnd - investmentStart);
+  return unrealizedAtEnd * fraction;
+}
+
+function makeChartPoint(
+  time: number,
+  label: string,
+  netCapital: number,
+  portfolioValue: number,
+  depositDelta: number,
+  withdrawalDelta: number,
+): ChartPoint {
+  const investedCapital = Math.max(0, netCapital);
+  const cumulativeGain = Math.max(0, portfolioValue - investedCapital);
+  return {
+    time,
+    label,
+    netCapital,
+    portfolioValue,
+    investedCapital,
+    cumulativeGain,
+    depositDelta,
+    withdrawalDelta,
+  };
+}
+
+function buildChart(events: TimelineEvent[], options: ChartBuildOptions): ChartPoint[] {
   let deposits = 0;
   let withdrawals = 0;
-  let profit = 0;
+  let portfolio = 0;
   const points: ChartPoint[] = [];
 
   if (events.length === 0) {
     return points;
   }
 
-  points.push({
-    time: events[0].time.getTime() - 1,
-    label: formatChartLabel(events[0].time),
-    netCapital: 0,
-    equity: 0,
-  });
+  function portfolioValueAt(time: number): number {
+    const unrealized = estimatedUnrealized(
+      time,
+      options.unrealizedAtEnd,
+      options.investmentStart,
+      options.investmentEnd,
+    );
+    return Math.max(0, portfolio) + unrealized;
+  }
+
+  points.push(
+    makeChartPoint(
+      events[0].time.getTime() - 1,
+      formatChartLabel(events[0].time),
+      0,
+      0,
+      0,
+      0,
+    ),
+  );
 
   for (const event of events) {
     deposits += event.depositDelta;
     withdrawals += event.withdrawalDelta;
-    profit += event.profitDelta;
+    portfolio += event.depositDelta + event.profitDelta;
+    if (event.withdrawalDelta > 0) {
+      portfolio = Math.max(0, portfolio - event.withdrawalDelta);
+    }
+
     const netCapital = deposits - withdrawals;
-    const equity = netCapital + profit;
+    const time = event.time.getTime();
+    const value = portfolioValueAt(time);
     const last = points[points.length - 1];
-    if (last && last.time === event.time.getTime()) {
-      last.netCapital = netCapital;
-      last.equity = equity;
+    if (last && last.time === time) {
+      const merged = makeChartPoint(
+        time,
+        formatChartLabel(event.time),
+        netCapital,
+        value,
+        last.depositDelta + event.depositDelta,
+        last.withdrawalDelta + event.withdrawalDelta,
+      );
+      points[points.length - 1] = merged;
       continue;
     }
-    points.push({
-      time: event.time.getTime(),
-      label: formatChartLabel(event.time),
-      netCapital,
-      equity,
-    });
+    points.push(
+      makeChartPoint(
+        time,
+        formatChartLabel(event.time),
+        netCapital,
+        value,
+        event.depositDelta,
+        event.withdrawalDelta,
+      ),
+    );
   }
 
   return points;
@@ -164,16 +271,21 @@ function investorCashFlows(
   treatTransfersAsExternal: boolean,
 ): CashFlow[] {
   const flows: CashFlow[] = [];
+  const internalKeys = treatTransfersAsExternal
+    ? new Set<string>()
+    : findInternalTransferKeys(cashOperations);
 
   for (const operation of cashOperations) {
     if (operation.kind === "deposit") {
       flows.push({ date: operation.time, amount: -Math.abs(operation.amount) });
     } else if (operation.kind === "withdrawal") {
       flows.push({ date: operation.time, amount: Math.abs(operation.amount) });
-    } else if (treatTransfersAsExternal && inboundTransfer(operation)) {
-      flows.push({ date: operation.time, amount: -Math.abs(operation.amount) });
-    } else if (treatTransfersAsExternal && outboundTransfer(operation)) {
-      flows.push({ date: operation.time, amount: Math.abs(operation.amount) });
+    } else if (shouldCountTransferAsExternal(operation, treatTransfersAsExternal, internalKeys)) {
+      if (operation.amount > 0) {
+        flows.push({ date: operation.time, amount: -Math.abs(operation.amount) });
+      } else {
+        flows.push({ date: operation.time, amount: Math.abs(operation.amount) });
+      }
     }
   }
 
@@ -187,6 +299,120 @@ function countKinds(parsed: ParsedXtbFile): KindCounts {
     counts[operation.kind] = (counts[operation.kind] ?? 0) + 1;
   }
   return counts;
+}
+
+function sumCashByKind(parsed: ParsedXtbFile, kind: CashOperation["kind"]): number {
+  return parsed.cashOperations
+    .filter((operation) => operation.kind === kind)
+    .reduce((sum, operation) => sum + operation.amount, 0);
+}
+
+function computeMetrics(parsed: ParsedXtbFile, firstDate: Date | null, lastDate: Date | null): PortfolioMetrics {
+  const totalDividends = sumCashByKind(parsed, "dividend");
+  const totalInterest = sumCashByKind(parsed, "interest");
+  const totalWithholdingTax = sumCashByKind(parsed, "withholding_tax");
+  const totalCommissions = sumCashByKind(parsed, "commission");
+  const totalInterestTax = sumCashByKind(parsed, "interest_tax");
+  const totalFeesAndTaxes =
+    Math.abs(totalCommissions) +
+    Math.abs(totalWithholdingTax) +
+    Math.abs(totalInterestTax);
+
+  const internalTransferCount = parsed.cashOperations.filter(
+    (operation) => operation.kind === "transfer" && isSubaccountTransfer(operation.rawType),
+  ).length;
+
+  const closed = parsed.closedPositions;
+  const winners = closed.filter((position) => position.netProfit > 0).length;
+  const winRate = closed.length > 0 ? winners / closed.length : null;
+
+  const holdingDays = closed
+    .filter((position) => position.openTime != null)
+    .map((position) => {
+      const open = position.openTime!.getTime();
+      const close = position.closeTime.getTime();
+      return Math.max(0, Math.round((close - open) / (1000 * 60 * 60 * 24)));
+    });
+  const avgHoldingDays =
+    holdingDays.length > 0
+      ? holdingDays.reduce((sum, days) => sum + days, 0) / holdingDays.length
+      : null;
+
+  const sortedByProfit = [...closed].sort((a, b) => b.netProfit - a.netProfit);
+  const bestPosition =
+    sortedByProfit.length > 0
+      ? { symbol: sortedByProfit[0].symbol, profit: sortedByProfit[0].netProfit }
+      : null;
+  const worstPosition =
+    sortedByProfit.length > 0
+      ? {
+          symbol: sortedByProfit[sortedByProfit.length - 1].symbol,
+          profit: sortedByProfit[sortedByProfit.length - 1].netProfit,
+        }
+      : null;
+
+  const topSymbols = aggregateSymbolProfits(parsed).slice(0, 5);
+
+  const investingDays =
+    firstDate && lastDate
+      ? Math.max(0, Math.round((lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)))
+      : null;
+
+  return {
+    totalDividends,
+    totalInterest,
+    totalWithholdingTax,
+    totalCommissions,
+    totalFeesAndTaxes,
+    internalTransferCount,
+    winRate,
+    avgHoldingDays,
+    bestPosition,
+    worstPosition,
+    topSymbols,
+    investingDays,
+  };
+}
+
+export function analyzeAccountBreakdown(
+  files: ParsedXtbFile[],
+  kinds: AccountKind[],
+): AccountBreakdown[] {
+  const breakdown: AccountBreakdown[] = [];
+  for (const kind of kinds) {
+    const forKind = files.filter((file) => file.accountKind === kind);
+    if (forKind.length === 0) {
+      continue;
+    }
+    const merged = mergeParsedFiles(forKind, [kind]);
+    const report = analyzePortfolio(merged, { treatTransfersAsExternal: true });
+    breakdown.push({
+      kind,
+      portfolioValue: report.portfolioValue,
+      totalProfit: report.totalProfit,
+      netDeposits: report.netDeposits,
+      totalDeposits: report.totalDeposits,
+      totalWithdrawals: report.totalWithdrawals,
+    });
+  }
+  return breakdown;
+}
+
+export function analyzePerAccountCharts(
+  files: ParsedXtbFile[],
+  kinds: AccountKind[],
+): Partial<Record<AccountKind, ChartPoint[]>> {
+  const charts: Partial<Record<AccountKind, ChartPoint[]>> = {};
+  for (const kind of kinds) {
+    const forKind = files.filter((file) => file.accountKind === kind);
+    if (forKind.length === 0) {
+      continue;
+    }
+    const merged = mergeParsedFiles(forKind, [kind]);
+    const report = analyzePortfolio(merged, { treatTransfersAsExternal: true });
+    charts[kind] = report.chart;
+  }
+  return charts;
 }
 
 export function analyzePortfolio(
@@ -212,23 +438,44 @@ export function analyzePortfolio(
       ? openProfit
       : 0;
   const totalProfit = hasCurrentValue ? currentValue - netDeposits : realizedProfit + unrealizedProfit;
+  const portfolioValue = netDeposits + totalProfit;
 
   const dates = events.map((event) => event.time);
   const firstDate = dates[0] ?? null;
   const lastEventDate = dates[dates.length - 1] ?? null;
   const lastDate = hasCurrentValue ? new Date() : lastEventDate;
 
-  const chart = buildChart(events);
-  if (hasCurrentValue && lastDate && chart.length > 0) {
-    chart.push({
-      time: lastDate.getTime(),
-      label: formatChartLabel(lastDate),
-      netCapital: netDeposits,
-      equity: currentValue,
-    });
-  } else if (hasOpenProfit && chart.length > 0) {
+  const investmentStart = firstInvestmentTime(parsed);
+  const investmentEnd = lastEventDate?.getTime() ?? Date.now();
+  const chart = buildChart(events, {
+    unrealizedAtEnd: unrealizedProfit,
+    investmentStart,
+    investmentEnd,
+  });
+  if (chart.length > 0) {
     const last = chart[chart.length - 1];
-    last.equity = netDeposits + totalProfit;
+    if (hasCurrentValue && lastDate && lastDate.getTime() > last.time) {
+      chart.push(
+        makeChartPoint(
+          lastDate.getTime(),
+          formatChartLabel(lastDate),
+          netDeposits,
+          currentValue!,
+          0,
+          0,
+        ),
+      );
+    } else {
+      const patched = makeChartPoint(
+        last.time,
+        last.label,
+        netDeposits,
+        portfolioValue,
+        last.depositDelta,
+        last.withdrawalDelta,
+      );
+      chart[chart.length - 1] = patched;
+    }
   }
 
   const terminalValue = hasCurrentValue ? currentValue : estimatedEquity + unrealizedProfit;
@@ -253,6 +500,18 @@ export function analyzePortfolio(
       `Nierozpoznane typy operacji (${unknown.length}): ${examples.join(", ")}. Nie wliczono ich do wpłat ani zysku.`,
     );
   }
+  if (!treatTransfersAsExternal) {
+    const internalKeys = findInternalTransferKeys(parsed.cashOperations);
+    const externalTransfers = parsed.cashOperations.filter((operation) =>
+      isExternalTransfer(operation, internalKeys),
+    );
+    if (externalTransfers.length > 0) {
+      const externalSum = externalTransfers.reduce((sum, operation) => sum + operation.amount, 0);
+      warnings.push(
+        `Wykryto ${externalTransfers.length} transfer(ów) poza wgrane konta (np. USD lub inny rachunek). Wliczono je do kapitału netto (saldo: ${externalSum.toLocaleString("pl-PL", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} zł).`,
+      );
+    }
+  }
   if (
     parsed.closedPositions.length === 0 &&
     (kindCounts.purchase || kindCounts.sale) &&
@@ -269,6 +528,11 @@ export function analyzePortfolio(
   if (totalDeposits === 0) {
     warnings.push("Nie znaleziono wpłat. Łączna stopa zwrotu wymaga historii depozytów.");
   }
+  if (unrealizedProfit !== 0) {
+    warnings.push(
+      "Wartość historyczna portfela jest szacowana. Bieżąca wartość otwartych pozycji pochodzi z eksportu.",
+    );
+  }
 
   const selectedAccounts = [
     ...new Set([
@@ -276,6 +540,8 @@ export function analyzePortfolio(
       ...parsed.closedPositions.map((position) => position.accountKind),
     ]),
   ] as AccountKind[];
+
+  const metrics = computeMetrics(parsed, firstDate, lastDate);
 
   return {
     currency: "PLN",
@@ -287,6 +553,7 @@ export function analyzePortfolio(
     realizedProfit,
     unrealizedProfit,
     totalProfit,
+    portfolioValue,
     totalReturn: totalDeposits > 0 ? totalProfit / totalDeposits : null,
     annualReturn,
     chart,
@@ -295,5 +562,7 @@ export function analyzePortfolio(
     tradeCount: parsed.closedPositions.length,
     kindCounts,
     selectedAccounts,
+    metrics,
+    accountBreakdown: [],
   };
 }

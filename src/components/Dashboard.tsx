@@ -1,21 +1,37 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { analyzePortfolio } from "@/lib/analysis/portfolio";
-import { formatPln } from "@/lib/format";
+import {
+  enrichChartWithMarketPrices,
+  groupPricesByTicker,
+  mergeAssetPriceRows,
+} from "@/lib/analysis/market-value";
+import {
+  analyzeAccountBreakdown,
+  analyzePerAccountCharts,
+  analyzePortfolio,
+} from "@/lib/analysis/portfolio";
+import { requestAssetPrices, requestPriceSync } from "@/lib/prices/client";
+import type { AssetPriceRow } from "@/lib/prices/supabase";
+import { collectTickerStartDatesFromFiles } from "@/lib/prices/ticker-requests";
+import { isPlnMarketTicker } from "@/lib/prices/yahoo-ticker";
 import { stampAccountKind } from "@/lib/xtb/account";
+import { emptyFileNotice, partitionImportedFiles } from "@/lib/xtb/import";
 import { mergeParsedFiles } from "@/lib/xtb/merge";
 import { parseXtbFile } from "@/lib/xtb/parse";
 import { sampleAccounts } from "@/lib/xtb/sample";
-import { parseAmount } from "@/lib/xtb/values";
 import type { AccountKind, ParsedXtbFile } from "@/lib/xtb/types";
+import { AccountBreakdownCards } from "./AccountBreakdownCards";
 import { AccountTabs } from "./AccountTabs";
 import { ExportGuide } from "./ExportGuide";
 import { FileDropzone } from "./FileDropzone";
 import { ImportedFiles } from "./ImportedFiles";
 import { MetricCards } from "./MetricCards";
 import { OperationSummary } from "./OperationSummary";
+import { PerformanceIndicators } from "./PerformanceIndicators";
 import { PortfolioChart } from "./PortfolioChart";
+import { PortfolioDetails } from "./PortfolioDetails";
+import { PortfolioSummary } from "./PortfolioSummary";
 
 const trustPoints = [
   "Dla inwestorów indywidualnych",
@@ -27,32 +43,69 @@ export function Dashboard() {
   const [imports, setImports] = useState<ParsedXtbFile[]>([]);
   const [selected, setSelected] = useState<AccountKind[]>(["standard", "ike", "ikze"]);
   const [error, setError] = useState<string | null>(null);
+  const [importNotices, setImportNotices] = useState<string[]>([]);
+  const [priceSyncNotice, setPriceSyncNotice] = useState<string | null>(null);
+  const [assetPrices, setAssetPrices] = useState<AssetPriceRow[]>([]);
   const [busy, setBusy] = useState(false);
-  const [currentValue, setCurrentValue] = useState("");
 
   const available = useMemo(
     () => [...new Set(imports.map((file) => file.accountKind))],
     [imports],
   );
-  const activeSelection = selected.filter((kind) => available.includes(kind));
+  const activeSelection = useMemo(
+    () => selected.filter((kind) => available.includes(kind)),
+    [selected, available],
+  );
+  const selectionKey = activeSelection.slice().sort().join(",");
   const merged = useMemo(
     () => (imports.length > 0 ? mergeParsedFiles(imports, activeSelection) : null),
-    [imports, activeSelection],
+    [imports, selectionKey],
   );
-  const currentAccountValue = parseAmount(currentValue) ?? undefined;
   const report = useMemo(
     () =>
       merged
         ? analyzePortfolio(merged, {
-            currentAccountValue:
-              currentAccountValue != null && currentAccountValue >= 0
-                ? currentAccountValue
-                : undefined,
             treatTransfersAsExternal: activeSelection.length === 1,
           })
         : null,
-    [merged, currentAccountValue, activeSelection.length],
+    [merged, selectionKey],
   );
+
+  const accountBreakdown = useMemo(
+    () => (imports.length > 0 ? analyzeAccountBreakdown(imports, activeSelection) : []),
+    [imports, selectionKey],
+  );
+
+  const perAccountCharts = useMemo(
+    () => (imports.length > 0 ? analyzePerAccountCharts(imports, activeSelection) : {}),
+    [imports, selectionKey],
+  );
+
+  const marketChart = useMemo(() => {
+    if (!report || !merged || assetPrices.length === 0) {
+      return null;
+    }
+    const enriched = enrichChartWithMarketPrices(
+      report.chart,
+      merged,
+      groupPricesByTicker(assetPrices),
+      { treatTransfersAsExternal: activeSelection.length === 1 },
+    );
+    return enriched.usedMarket ? enriched : null;
+  }, [report, merged, assetPrices, selectionKey]);
+
+  useEffect(() => {
+    if (available.length === 0) {
+      return;
+    }
+    setSelected((current) => {
+      const filtered = current.filter((kind) => available.includes(kind));
+      if (filtered.length > 0) {
+        return filtered;
+      }
+      return [available[0]];
+    });
+  }, [available]);
 
   useEffect(() => {
     if (imports.length === 0) {
@@ -61,26 +114,96 @@ export function Dashboard() {
     document.getElementById("wyniki")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [imports]);
 
+  async function syncPricesForFiles(files: ParsedXtbFile[]) {
+    const items = collectTickerStartDatesFromFiles(files);
+    if (items.length === 0) {
+      setPriceSyncNotice(null);
+      setAssetPrices([]);
+      return;
+    }
+
+    setPriceSyncNotice(`Synchronizacja cen dla ${items.length} ticker(ów)…`);
+    try {
+      const result = await requestPriceSync(items);
+      const parts = [
+        result.fetchedTickers > 0 ? `pobrano ${result.fetchedTickers}` : null,
+        result.skippedTickers > 0 ? `aktualne ${result.skippedTickers}` : null,
+        result.errorTickers > 0 ? `błędy ${result.errorTickers}` : null,
+      ].filter(Boolean);
+
+      const persistWarnings = result.results
+        .map((entry) => entry.message)
+        .filter((message): message is string => Boolean(message && message.includes("zapis")));
+
+      const from = items.reduce(
+        (min, item) => (item.startDate < min ? item.startDate : min),
+        items[0]!.startDate,
+      );
+
+      let fromDb: AssetPriceRow[] = [];
+      try {
+        fromDb = await requestAssetPrices({
+          tickers: items.map((item) => item.xtbTicker),
+          from,
+        });
+      } catch {
+        // Brak SELECT w Supabase — użyjemy cen zwróconych z Yahoo w odpowiedzi sync.
+      }
+
+      const mergedPrices = mergeAssetPriceRows(fromDb, result.prices ?? []);
+      setAssetPrices(mergedPrices);
+
+      const gpwTickers = items.filter((item) => isPlnMarketTicker(item.xtbTicker)).length;
+      const noticeParts = [
+        `Ceny rynkowe: ${parts.join(" · ") || "brak zmian"}`,
+        `${mergedPrices.length} notowań`,
+        gpwTickers > 0 ? `MTM GPW (${gpwTickers} tickerów)` : null,
+        persistWarnings.length > 0
+          ? "brak zapisu do Supabase — wykres i tak używa Yahoo (dodaj SERVICE_ROLE_KEY)"
+          : null,
+      ].filter(Boolean);
+      setPriceSyncNotice(`${noticeParts.join(" · ")}.`);
+    } catch (syncError) {
+      setAssetPrices([]);
+      setPriceSyncNotice(
+        syncError instanceof Error
+          ? `Nie udało się zsynchronizować cen: ${syncError.message}`
+          : "Nie udało się zsynchronizować cen rynkowych.",
+      );
+    }
+  }
+
   async function handleFiles(files: File[]) {
     setBusy(true);
     setError(null);
+    setImportNotices([]);
+    setPriceSyncNotice(null);
     try {
       const parsed = await Promise.all(files.map((file) => parseXtbFile(file)));
-      const accepted = parsed.filter(
-        (file) =>
-          file.recognized ||
-          file.cashOperations.length > 0 ||
-          file.closedPositions.length > 0,
-      );
-      const rejected = files.length - accepted.length;
+      const { accepted, skippedEmpty, rejected } = partitionImportedFiles(parsed);
+
       if (accepted.length === 0) {
+        if (skippedEmpty.length > 0) {
+          setImportNotices(skippedEmpty.map((file) => emptyFileNotice(file)));
+          return;
+        }
         setError("Nie znaleziono transakcji XTB w tych plikach. Sprawdź, czy to eksport z xStation.");
         return;
       }
-      setImports((current) => [...current, ...accepted]);
-      if (rejected > 0) {
-        setError(`Pominięto ${rejected} plik(i) bez rozpoznanej historii XTB.`);
+
+      const nextImports = [...imports, ...accepted];
+      setImports(nextImports);
+
+      const notices = skippedEmpty.map((file) => emptyFileNotice(file));
+      if (notices.length > 0) {
+        setImportNotices(notices);
       }
+      if (rejected.length > 0) {
+        setError(`Pominięto ${rejected.length} plik(i) bez rozpoznanej historii XTB.`);
+      }
+
+      // Tylko tickery + daty startu — bez wysyłania historii transakcji.
+      void syncPricesForFiles(nextImports);
     } catch {
       setError("Nie udało się odczytać pliku. Spróbuj XLSX albo CSV z xStation.");
     } finally {
@@ -103,8 +226,8 @@ export function Dashboard() {
               Sprawdź swoje wyniki. Spokojnie i przejrzyście.
             </h1>
             <p className="mt-4 text-base leading-7 text-muted sm:text-lg">
-              Wgraj eksporty z xStation — zwykły, IKE i IKZE możesz dodać razem. Policzysz sumę wpłat,
-              zysk oraz stopy zwrotu, bez logowania.
+              Wgraj eksporty z xStation — zwykły, IKE i IKZE możesz dodać razem. Policzysz wartość
+              portfela, zysk oraz stopy zwrotu, bez logowania.
             </p>
             <ul className="mt-6 flex flex-wrap gap-2">
               {trustPoints.map((point) => (
@@ -129,12 +252,23 @@ export function Dashboard() {
               );
             }}
             onRemove={(index) => {
-              setImports((current) => current.filter((_, fileIndex) => fileIndex !== index));
+              setImports((current) => {
+                const next = current.filter((_, fileIndex) => fileIndex !== index);
+                if (next.length === 0) {
+                  setAssetPrices([]);
+                  setPriceSyncNotice(null);
+                } else {
+                  void syncPricesForFiles(next);
+                }
+                return next;
+              });
             }}
             onClear={() => {
               setImports([]);
               setError(null);
-              setCurrentValue("");
+              setImportNotices([]);
+              setPriceSyncNotice(null);
+              setAssetPrices([]);
             }}
           />
 
@@ -144,7 +278,9 @@ export function Dashboard() {
               className="w-fit rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-foreground transition hover:border-primary hover:text-primary"
               onClick={() => {
                 setError(null);
-                setCurrentValue("");
+                setImportNotices([]);
+                setPriceSyncNotice(null);
+                setAssetPrices([]);
                 setSelected(["standard", "ike", "ikze"]);
                 setImports(sampleAccounts());
               }}
@@ -162,6 +298,21 @@ export function Dashboard() {
           </div>
 
           {report ? null : <ExportGuide />}
+
+          {importNotices.length > 0 ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+              {importNotices.map((notice) => (
+                <p key={notice}>{notice}</p>
+              ))}
+            </div>
+          ) : null}
+
+          {priceSyncNotice ? (
+            <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
+              {priceSyncNotice}
+              {marketChart ? ` · wykres: gotówka + MTM (${marketChart.pricedLots} lotów).` : ""}
+            </p>
+          ) : null}
 
           {error ? (
             <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-negative">
@@ -193,29 +344,35 @@ export function Dashboard() {
             </div>
           ) : null}
 
-          {activeSelection.length > 0 ? <PortfolioChart data={report.chart} /> : null}
+          {activeSelection.length > 0 ? <PortfolioSummary report={report} /> : null}
 
-          <label className="flex max-w-md flex-col gap-2 text-sm text-muted">
-            Aktualna wartość zaznaczonych kont (opcjonalnie)
-            <input
-              type="text"
-              inputMode="decimal"
-              placeholder="np. 32 450,00"
-              value={currentValue}
-              onChange={(event) => setCurrentValue(event.target.value)}
-              className="rounded-xl border border-border bg-surface px-3 py-2.5 text-base text-foreground outline-none ring-primary/15 focus:border-primary focus:ring-4"
+          {activeSelection.length > 0 ? (
+            <AccountBreakdownCards breakdown={accountBreakdown} />
+          ) : null}
+
+          {activeSelection.length > 0 ? (
+            <PortfolioChart
+              key={selectionKey + (marketChart ? "-mtm" : "-cash")}
+              data={marketChart?.chart ?? report.chart}
+              perAccount={marketChart ? undefined : perAccountCharts}
+              selectedAccounts={activeSelection}
+              availableAccounts={available}
+              marketMarked={Boolean(marketChart)}
+              onSelectedAccountsChange={(kinds) => {
+                if (kinds.length === 0) {
+                  return;
+                }
+                setSelected(kinds);
+              }}
             />
-            <span>
-              Jeśli podasz saldo z xStation, zysk i XIRR uwzględnią gotówkę i otwarte pozycje.
-              {merged?.openProfit
-                ? ` Z pliku: niezrealizowany wynik otwartych pozycji ${formatPln(merged.openProfit)}.`
-                : merged?.openPositionsValue
-                  ? " W wgranym eksporcie nie ma otwartego wyniku do doliczenia."
-                  : ""}
-            </span>
-          </label>
+          ) : null}
 
           {activeSelection.length > 0 ? <MetricCards report={report} /> : null}
+
+          {activeSelection.length > 0 ? <PortfolioDetails report={report} /> : null}
+
+          {activeSelection.length > 0 ? <PerformanceIndicators report={report} /> : null}
+
           <ExportGuide />
         </section>
       ) : null}

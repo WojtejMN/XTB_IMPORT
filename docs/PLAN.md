@@ -15,7 +15,8 @@ Aplikacja ma to policzyć po wrzuceniu eksportu i pokazać na jednej czytelnej s
 Wchodzi:
 
 - import XLSX z xStation (oba arkusze) oraz CSV tych tabel
-- wykres: kumulatywny kapitał netto (wpłaty − wypłaty) vs kapitał netto + zysk
+- wykres: kumulatywny kapitał netto (wpłaty − wypłaty) vs kapitał netto + zysk; tryb prosty (dzień + suwak przybliżenia) i zaawansowany (dzień/miesiąc/rok + suwak)
+- karta podsumowania: łączna wartość netto portfela
 - karty: łączna stopa zwrotu, roczna (XIRR), suma wpłat, zysk
 - opcjonalne pole „aktualna wartość konta” (otwarte pozycje)
 - analiza w 100% w przeglądarce
@@ -44,12 +45,42 @@ flowchart TD
 
 ### Wykres
 
-- **Niebieska linia** — kumulatywny kapitał netto: suma wpłat minus suma wypłat (wraz z transferami zewnętrznymi, gdy widok jednego konta).
-- **Zielona linia** — kapitał netto plus skumulowany zysk (dywidendy, odsetki, zamknięte pozycje itd.).
+Trzy tryby widoku:
 
-Karta „Suma wpłat” nadal pokazuje sumę wpłat bez pomniejszania o wypłaty.
+- **Wartość** (domyślny) — wykres warstwowy: kapitał netto (niebieski) + zysk skumulowany (zielony) = wartość portfela. Kropki: wpłaty (niebieskie), wypłaty (czerwone).
+- **Zysk** — sama linia zysku skumulowanego.
+- **Przepływy** — słupki wpłat i wypłat.
 
-### Suma wpłat
+Kapitał netto na wykresie to `max(0, wpłaty − wypłaty)` — bez ujemnych wartości. Saldo przepływów (może być ujemne) w sekcji szczegółów.
+
+Tryb zaawansowany: agregacja dzień/miesiąc/rok + suwak przybliżenia. Przy wielu kontach: opcjonalne linie per konto.
+
+### Karta hero
+
+- **Łączna wartość portfela** — główna liczba (zawsze sensowna wartość inwestycji).
+- Pod spodem: zysk, okres, liczba kont.
+- Obok: wpłacono łącznie / wypłacono łącznie (osobno, bez minusów).
+
+### Karty metryk
+
+- Zysk wyprodukowany (zrealizowany + niezrealizowany)
+- Łączna stopa zwrotu
+- Roczna stopa zwrotu (XIRR)
+- Saldo przepływów (wpłaty − wypłaty, z opisem kontekstowym)
+
+### Szczegóły (rozwijane)
+
+Saldo przepływów, zysk zrealizowany/niezrealizowany, transfery wewnętrzne.
+
+### Wskaźniki szczegółowe
+
+Dywidendy, odsetki, prowizje i opłaty, skuteczność pozycji, średni czas pozycji, okres inwestowania, top symbole, najlepsza/najgorsza pozycja.
+
+### Rozbicie per konto
+
+Mini-karty PLN / IKE / IKZE z wartością portfela i zyskiem (gdy zaznaczono >1 konto).
+
+### Suma wpłat (w raporcie wewnętrznym)
 
 Suma wszystkich operacji sklasyfikowanych jako `deposit`. Wypłaty **nie** pomniejszają tej linii — użytkownik pyta o sumę wpłat.
 
@@ -106,7 +137,7 @@ Aktualny eksport (2026):
 | --- | --- |
 | Cash Operations | Type, Time, Amount, Comment, Ticker, Position ID |
 | Closed Positions | Instrument/Ticker, Open/Close Time (UTC), Profit/Loss, Gross Profit |
-| Open Positions | podsumowanie Product / Metric / Amount (Value, Profit) |
+| Open Positions | podsumowanie Product / Metric / Amount (`Open position value`, `Open position profit`; starsze: `Value` / `Profit`) |
 
 Starszy eksport: `CASH OPERATION HISTORY`, `CLOSED POSITION HISTORY`.
 
@@ -114,7 +145,7 @@ Parser skanuje nagłówki zamiast zakładać stałe kolumny. Aliasuje `Close Tim
 
 Typy kasowe (case-insensitive): `Deposit`, `Withdrawal`, `IKE deposit` / `IKE return` / `IKZE deposit` (transfer między kontami), `Stock purchase` / `Stock sell`, `Dividend`, `Withholding tax`, `Tax from dividend…`, `IKE tax`, `Free funds interest`, `Close trade`, `Swap`, `Subaccount transfer`.
 
-`Close trade` i kasowy `Swap` są pomijane w zysku, gdy arkusz zamkniętych pozycji już zawiera P/L (żeby nie liczyć dwa razy). Transfer subkonta nigdy nie jest wpłatą inwestora. Wynik otwartych pozycji z arkusza Open Positions doliczamy jako zysk niezrealizowany, dopóki użytkownik nie poda salda ręcznie.
+`Close trade` i kasowy `Swap` są pomijane w zysku, gdy arkusz zamkniętych pozycji już zawiera P/L (żeby nie liczyć dwa razy). Transfer subkonta nigdy nie jest wpłatą inwestora. W widoku wielu kont transfery PLN↔IKE/IKZE są sparowane i pomijane; transfer bez drugiej nogi w wgranych plikach (np. przewalutowanie USD, inny rachunek) liczy się jak wpłata/wypłata zewnętrzna. Wynik otwartych pozycji z arkusza Open Positions doliczamy jako zysk niezrealizowany, dopóki użytkownik nie poda salda ręcznie.
 
 ## Stack (aktualny na 2026)
 
@@ -125,17 +156,21 @@ Typy kasowe (case-insensitive): `Deposit`, `Withdrawal`, `IKE deposit` / `IKE re
 | Wykres | Recharts | prosty wykres liniowy w React |
 | XLSX | fflate + XML | działa w przeglądarce, bez luk SheetJS |
 | Testy | Vitest | szybkie testy czystych funkcji |
+| Ceny EOD | Yahoo Finance (`yahoo-finance2`) + Supabase `asset_prices` | braki dat dociągane tylko gdy trzeba |
 
-Świadomie bez bazy i API: plik nie opuszcza przeglądarki.
+Historia transakcji XTB nadal nie opuszcza przeglądarki. Na serwer idą wyłącznie tickery i data pierwszej transakcji (do synchronizacji cen).
 
 ## Struktura kodu
 
 - `src/lib/xtb` — parser i klasyfikacja
 - `src/lib/analysis` — portfel i XIRR
+- `src/lib/prices` — mapowanie tickerów, luki dat, sync Yahoo → Supabase, odczyt cen
+- `src/app/api/prices/sync` — endpoint synchronizacji cen
+- `src/app/api/prices` — odczyt dziennych cen z `asset_prices`
+- `src/lib/analysis/market-value.ts` — wykres gotówka + MTM (GPW `.PL`)
 - `src/components` — dropzone, wykres, karty
 - `Rules` — zasady kodu i testów
 - `src/**/*.test.ts` — testy jednostkowe
-
 ## Ryzyka
 
 - XTB znowu zmieni nazwy arkuszy/kolumn → mapowanie po aliasach + test na fixturze

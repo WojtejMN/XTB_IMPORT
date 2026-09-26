@@ -4,10 +4,11 @@ import {
   findHeader,
   getCell,
   isCashHeader,
+  isOpenPositionDetailHeader,
   isTradeHeader,
   type ColumnMap,
 } from "./headers";
-import type { AccountKind, CashOperation, ClosedPosition, ParsedXtbFile } from "./types";
+import type { AccountKind, CashOperation, ClosedPosition, OpenPosition, ParsedXtbFile } from "./types";
 import { cellText, normalizeHeader, parseAmount, parseDate } from "./values";
 
 function decodeText(buffer: ArrayBuffer): string {
@@ -152,6 +153,51 @@ function parseTradeRows(
   return positions;
 }
 
+export function parseOpenPositionRows(
+  rows: unknown[][],
+  accountKind: AccountKind,
+): OpenPosition[] {
+  const header =
+    findHeader(rows, isOpenPositionDetailHeader) ?? findHeader(rows, isTradeHeader);
+  if (!header) {
+    return [];
+  }
+
+  const positions: OpenPosition[] = [];
+
+  for (let index = header.index + 1; index < rows.length; index += 1) {
+    const row = rows[index] ?? [];
+    const symbol = cellText(getCell(row, header.map, "symbol"));
+    if (!symbol || isFooterLabel(symbol) || isFooterLabel(cellText(getCell(row, header.map, "type")))) {
+      continue;
+    }
+
+    const netColumn = parseAmount(getCell(row, header.map, "netProfit"));
+    const grossProfit = parseAmount(getCell(row, header.map, "grossProfit"));
+    const value = parseAmount(getCell(row, header.map, "amount"));
+    const volume = parseAmount(getCell(row, header.map, "volume"));
+    const openTime = parseDate(getCell(row, header.map, "openTime"));
+    const openPrice = parseAmount(getCell(row, header.map, "openPrice"));
+
+    if (volume == null && value == null && netColumn == null && grossProfit == null) {
+      continue;
+    }
+
+    positions.push({
+      symbol,
+      netProfit: netColumn ?? 0,
+      grossProfit: grossProfit ?? undefined,
+      value: value ?? undefined,
+      volume: volume ?? null,
+      openTime: openTime ?? null,
+      openPrice: openPrice ?? null,
+      accountKind,
+    });
+  }
+
+  return positions;
+}
+
 export function parseTableRows(
   rows: unknown[][],
   sourceName: string,
@@ -221,10 +267,12 @@ export function parseOpenPositionsSummary(rows: unknown[][]): { value: number; p
     if (amount == null) {
       continue;
     }
-    if (metric === "value") {
+    // Aktualny xStation: "Open position value" / "Open position profit".
+    // Starszy eksport: samo "Value" / "Profit".
+    if (metric === "value" || metric.endsWith("position value")) {
       value += amount;
       sawMetric = true;
-    } else if (metric === "profit") {
+    } else if (metric === "profit" || metric.endsWith("position profit")) {
       profit += amount;
       sawMetric = true;
     }

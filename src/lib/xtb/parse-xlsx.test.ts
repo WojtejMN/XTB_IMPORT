@@ -263,9 +263,14 @@ describe("parseXlsxBuffer", () => {
     expect(parsed.recognized).toBe(true);
     expect(parsed.openProfit).toBeCloseTo(1104.39, 5);
     expect(parsed.openPositionsValue).toBeCloseTo(3784.13, 5);
+    expect(parsed.openPositions).toHaveLength(1);
+    expect(parsed.openPositions?.[0]?.symbol).toBe("ACM.PL");
+    expect(parsed.openPositions?.[0]?.volume).toBe(9);
+    expect(parsed.openPositions?.[0]?.netProfit).toBeCloseTo(538, 5);
     expect(parsed.closedPositions).toHaveLength(1);
-    expect(parsed.closedPositions[0]?.symbol).toBe("Acme");
+    expect(parsed.closedPositions[0]?.symbol).toBe("ACM.PL");
     expect(parsed.closedPositions[0]?.netProfit).toBeCloseTo(15.68, 5);
+    expect(parsed.cashOperations.find((row) => row.kind === "purchase")?.symbol).toBe("ACM.PL");
     expect(parsed.cashOperations.map((row) => row.kind)).toEqual([
       "transfer",
       "purchase",
@@ -276,5 +281,38 @@ describe("parseXlsxBuffer", () => {
       "profit_loss",
       "interest",
     ]);
+  });
+
+  it("czyta Open Positions z etykietami Open position value/profit", () => {
+    const buffer = buildXlsx([
+      {
+        name: "Cash Operations",
+        rows: [
+          ["ID", "Type", "Time", "Comment", "Symbol", "Amount"],
+          ["1", "Deposit", "01.01.2025 10:00:00", "", "", 1000],
+        ],
+      },
+      {
+        name: "Closed Positions",
+        rows: [["Symbol", "Close Time", "Profit/Loss"]],
+      },
+      {
+        name: "Open Positions",
+        rows: [
+          ["Account number", "51877991"],
+          ["Open Positions", ""],
+          ["Product", "Metric", "Amount", "Currency"],
+          ["IKE", "Open position value", 4806.5, ""],
+          ["IKE", "Open position profit", 1048.89, ""],
+          ["My Trades", "Open position value", 0, "PLN"],
+          ["My Trades", "Open position profit", 0, "PLN"],
+          ["Note", "Summary values and open positions are shown as of the report generation time"],
+        ],
+      },
+    ]);
+
+    const parsed = parseXlsxBuffer(buffer, "IKE_open_labels.xlsx");
+    expect(parsed.openPositionsValue).toBeCloseTo(4806.5, 5);
+    expect(parsed.openProfit).toBeCloseTo(1048.89, 5);
   });
 });

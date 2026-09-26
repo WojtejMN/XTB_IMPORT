@@ -1,8 +1,8 @@
 import { unzipSync } from "fflate";
 import { XMLParser } from "fast-xml-parser";
 import { detectAccountKind, previewFromRows, stampAccountKind } from "./account";
-import { parseOpenPositionsSummary, parseTableRows } from "./parse-table";
-import type { ClosedPosition, CashOperation, ParsedXtbFile } from "./types";
+import { parseOpenPositionsSummary, parseOpenPositionRows, parseTableRows } from "./parse-table";
+import type { ClosedPosition, CashOperation, OpenPosition, ParsedXtbFile } from "./types";
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -172,6 +172,7 @@ export function parseXlsxBuffer(buffer: ArrayBuffer, sourceName: string): Parsed
   const sheets = workbookSheets(files);
   const cashOperations: CashOperation[] = [];
   const closedPositions: ClosedPosition[] = [];
+  const openPositions: OpenPosition[] = [];
   let openProfit = 0;
   let openPositionsValue = 0;
   let recognized = false;
@@ -203,6 +204,11 @@ export function parseXlsxBuffer(buffer: ArrayBuffer, sourceName: string): Parsed
         sawOpenSummary = true;
         openProfit += summary.profit;
         openPositionsValue += summary.value;
+      }
+      const sheetOpenPositions = parseOpenPositionRows(rows, accountKind);
+      if (sheetOpenPositions.length > 0) {
+        recognized = true;
+        openPositions.push(...sheetOpenPositions);
       }
       continue;
     }
@@ -243,6 +249,7 @@ export function parseXlsxBuffer(buffer: ArrayBuffer, sourceName: string): Parsed
       accountKind,
       cashOperations,
       closedPositions,
+      openPositions: openPositions.length > 0 ? openPositions : undefined,
       warnings,
       recognized,
       openProfit: sawOpenSummary ? openProfit : undefined,

@@ -10,10 +10,16 @@ export function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-header backdrop-blur-md">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-        <a href="#import" className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+        <a
+          href="#import"
+          className="rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
           <Logo />
         </a>
-        <nav aria-label="Główne" className="hidden items-center gap-6 text-sm font-medium text-muted md:flex">
+        <nav
+          aria-label="Główne"
+          className="hidden items-center gap-6 text-sm font-medium text-muted md:flex"
+        >
           {nav.map((item) => (
             <a
               key={item.href}
@@ -29,10 +35,10 @@ export function SiteHeader() {
             Bez logowania
           </p>
           <a
-            href="#import"
+            href="#newsletter"
             className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-hover"
           >
-            Sprawdź wyniki
+            Zapisz się do newslettera
           </a>
         </div>
       </div>

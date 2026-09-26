@@ -1,4 +1,4 @@
-import { formatPln, formatSignedPct } from "@/lib/format";
+import { formatPln, formatSignedPct, formatSignedPln } from "@/lib/format";
 import type { PortfolioReport } from "@/lib/xtb/types";
 
 type MetricCardsProps = {
@@ -15,33 +15,34 @@ function toneClass(value: number | null): string {
 export function MetricCards({ report }: MetricCardsProps) {
   const cards = [
     {
+      label: "Zysk wyprodukowany",
+      value: formatSignedPln(report.totalProfit),
+      hint:
+        report.unrealizedProfit !== 0
+          ? `Zrealizowany: ${formatPln(report.realizedProfit)} · Niezrealizowany: ${formatPln(report.unrealizedProfit)}`
+          : "Dywidendy, odsetki i zamknięte pozycje",
+      toneClass: toneClass(report.totalProfit),
+    },
+    {
       label: "Łączna stopa zwrotu",
       value: formatSignedPct(report.totalReturn),
       hint: "Zysk / suma wpłat",
-      tone: report.totalReturn,
+      toneClass: toneClass(report.totalReturn),
     },
     {
       label: "Roczna stopa zwrotu",
       value: formatSignedPct(report.annualReturn),
-      hint: "XIRR, uwzględnia daty wpłat i wypłat",
-      tone: report.annualReturn,
+      hint: "XIRR — uwzględnia daty wpłat i wypłat",
+      toneClass: toneClass(report.annualReturn),
     },
     {
-      label: "Suma wpłat",
-      value: formatPln(report.totalDeposits),
-      hint: report.totalWithdrawals
-        ? `Wypłaty: ${formatPln(report.totalWithdrawals)}`
-        : "Bez uwzględnienia wypłat",
-      tone: null,
-    },
-    {
-      label: "Zysk wyprodukowany",
-      value: formatPln(report.totalProfit),
+      label: "Saldo przepływów",
+      value: formatSignedPln(report.netDeposits),
       hint:
-        report.unrealizedProfit !== 0
-          ? `W tym niezrealizowany: ${formatPln(report.unrealizedProfit)}`
-          : "Transakcje + dywidendy + odsetki",
-      tone: report.totalProfit,
+        report.netDeposits < 0
+          ? "Wypłacono więcej niż wpłacono"
+          : `Wpłaty: ${formatPln(report.totalDeposits)} · Wypłaty: ${formatPln(report.totalWithdrawals)}`,
+      toneClass: "text-foreground",
     },
   ];
 
@@ -53,7 +54,7 @@ export function MetricCards({ report }: MetricCardsProps) {
           className="rounded-2xl border border-border bg-surface p-5 shadow-[0_10px_30px_-18px_rgba(11,42,74,0.25)]"
         >
           <p className="text-sm font-medium text-muted">{card.label}</p>
-          <p className={`mt-2 text-3xl font-semibold tracking-tight ${toneClass(card.tone)}`}>
+          <p className={`mt-2 text-3xl font-semibold tracking-tight ${card.toneClass}`}>
             {card.value}
           </p>
           <p className="mt-2 text-sm text-muted">{card.hint}</p>

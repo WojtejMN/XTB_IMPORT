@@ -8,15 +8,19 @@ describe("analyzePortfolio", () => {
     const report = analyzePortfolio(sampleXtbHistory());
 
     expect(report.totalDeposits).toBe(27_000);
-    expect(report.totalWithdrawals).toBe(2_000);
-    expect(report.netDeposits).toBe(25_000);
+    expect(report.totalWithdrawals).toBe(5_000);
+    expect(report.netDeposits).toBe(22_000);
     expect(report.totalProfit).toBeCloseTo(4_104.65, 5);
+    expect(report.portfolioValue).toBeCloseTo(22_000 + 4_104.65, 5);
     expect(report.totalReturn).toBeCloseTo(4_104.65 / 27_000, 8);
     expect(report.annualReturn).not.toBeNull();
     expect(report.chart.length).toBeGreaterThan(3);
     expect(report.chart[0]?.netCapital).toBe(0);
-    expect(report.chart.at(-1)?.netCapital).toBe(25_000);
-    expect(report.chart.at(-1)?.equity).toBeCloseTo(25_000 + 4_104.65, 5);
+expect(report.chart.at(-1)?.netCapital).toBe(22_000);
+    expect(report.chart.at(-1)?.portfolioValue).toBeCloseTo(22_000 + 4_104.65, 5);
+    expect(report.chart.at(-1)?.investedCapital).toBe(22_000);
+    expect(report.metrics.totalDividends).toBeGreaterThan(0);
+    expect(report.metrics.investingDays).not.toBeNull();
   });
 
   it("nie wlicza kupna, sprzedaży i splitów do wpłat ani zysku", () => {
@@ -37,6 +41,64 @@ describe("analyzePortfolio", () => {
     expect(report.totalProfit).toBeCloseTo(4_104.65 + 153 + 55, 5);
   });
 
+  it("w widoku wszystkich kont liczy niesparowany transfer jak przepływ zewnętrzny", () => {
+    const parsed = {
+      sourceName: "multi.xlsx",
+      accountKind: "standard" as const,
+      warnings: [],
+      recognized: true,
+      cashOperations: [
+        {
+          id: "1",
+          kind: "deposit" as const,
+          rawType: "Deposit",
+          time: new Date("2024-01-01T10:00:00"),
+          comment: "",
+          symbol: "",
+          amount: 5000,
+          accountKind: "standard" as const,
+        },
+        {
+          id: "2",
+          kind: "transfer" as const,
+          rawType: "Transfer",
+          time: new Date("2024-02-01T10:00:00"),
+          comment: "Currency conversion, PLN to USD",
+          symbol: "",
+          amount: -800,
+          accountKind: "standard" as const,
+        },
+        {
+          id: "3",
+          kind: "transfer" as const,
+          rawType: "IKE deposit",
+          time: new Date("2024-03-01T10:00:00"),
+          comment: "Transfer out",
+          symbol: "",
+          amount: -1000,
+          accountKind: "standard" as const,
+        },
+        {
+          id: "4",
+          kind: "transfer" as const,
+          rawType: "IKE deposit",
+          time: new Date("2024-03-01T10:00:00"),
+          comment: "Transfer in",
+          symbol: "",
+          amount: 1000,
+          accountKind: "ike" as const,
+        },
+      ],
+      closedPositions: [],
+    };
+
+    const report = analyzePortfolio(parsed, { treatTransfersAsExternal: false });
+    expect(report.totalDeposits).toBe(5000);
+    expect(report.totalWithdrawals).toBe(800);
+    expect(report.netDeposits).toBe(4200);
+    expect(report.warnings.some((warning) => warning.includes("poza wgrane konta"))).toBe(true);
+  });
+
   it("w widoku IKZE liczy transfer przychodzący jak wpłatę", () => {
     const merged = mergeParsedFiles(sampleAccounts(), ["ikze"]);
     const report = analyzePortfolio(merged, { treatTransfersAsExternal: true });
@@ -50,9 +112,72 @@ describe("analyzePortfolio", () => {
       currentAccountValue: 30_000,
     });
 
-    expect(withValue.totalProfit).toBe(5_000);
-    expect(withValue.unrealizedProfit).toBeCloseTo(5_000 - withoutValue.realizedProfit, 5);
+    expect(withValue.totalProfit).toBe(8_000);
+    expect(withValue.unrealizedProfit).toBeCloseTo(8_000 - withoutValue.realizedProfit, 5);
     expect(withValue.annualReturn).not.toBe(withoutValue.annualReturn);
+  });
+
+  it("wykres i wartość portfela różnią się między kontami", () => {
+    const imports = sampleAccounts();
+    const standard = analyzePortfolio(mergeParsedFiles(imports, ["standard"]), {
+      treatTransfersAsExternal: true,
+    });
+    const ike = analyzePortfolio(mergeParsedFiles(imports, ["ike"]), {
+      treatTransfersAsExternal: true,
+    });
+
+    expect(standard.portfolioValue).not.toBe(ike.portfolioValue);
+    expect(standard.chart.at(-1)?.portfolioValue).not.toBe(ike.chart.at(-1)?.portfolioValue);
+    expect(standard.totalDeposits).not.toBe(ike.totalDeposits);
+  });
+
+  it("nie pokazuje ujemnej wartości portfela po wypłatach przekraczających wpłaty", () => {
+    const parsed = {
+      sourceName: "test.xlsx",
+      accountKind: "standard" as const,
+      warnings: [],
+      recognized: true,
+      openProfit: 0,
+      cashOperations: [
+        {
+          id: "1",
+          kind: "deposit" as const,
+          rawType: "Deposit",
+          time: new Date("2024-01-01T10:00:00"),
+          comment: "",
+          symbol: "",
+          amount: 5000,
+          accountKind: "standard" as const,
+        },
+        {
+          id: "2",
+          kind: "withdrawal" as const,
+          rawType: "Withdrawal",
+          time: new Date("2024-02-01T10:00:00"),
+          comment: "",
+          symbol: "",
+          amount: -9000,
+          accountKind: "standard" as const,
+        },
+        {
+          id: "3",
+          kind: "dividend" as const,
+          rawType: "DIVIDENT",
+          time: new Date("2024-03-01T10:00:00"),
+          comment: "",
+          symbol: "AAPL.US",
+          amount: 500,
+          accountKind: "standard" as const,
+        },
+      ],
+      closedPositions: [],
+    };
+
+    const report = analyzePortfolio(parsed);
+    expect(report.netDeposits).toBe(-4000);
+    expect(report.chart.some((point) => point.netCapital < 0)).toBe(true);
+    expect(report.chart.slice(0, -1).every((point) => point.portfolioValue >= 0)).toBe(true);
+    expect(report.chart.at(-1)?.portfolioValue).toBeCloseTo(report.portfolioValue, 5);
   });
 
   it("dolicza zysk z otwartych pozycji i nie dubluje Close trade ani subkont", () => {
@@ -140,6 +265,6 @@ describe("analyzePortfolio", () => {
     expect(report.unrealizedProfit).toBeCloseTo(1104.39, 5);
     expect(report.totalProfit).toBeCloseTo(15.68 + 1104.39, 5);
     expect(report.chart.at(-1)?.netCapital).toBe(3000);
-    expect(report.chart.at(-1)?.equity).toBeCloseTo(3000 + 15.68 + 1104.39, 5);
+    expect(report.chart.at(-1)?.portfolioValue).toBeCloseTo(3000 + 15.68 + 1104.39, 5);
   });
 });
