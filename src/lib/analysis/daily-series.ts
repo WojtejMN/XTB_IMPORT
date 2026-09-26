@@ -2,11 +2,19 @@ import { isSubaccountTransfer } from "../xtb/classify";
 import { isPlnMarketTicker } from "../prices/yahoo-ticker";
 import type { AssetPriceRow } from "../prices/supabase";
 import { mergeParsedFiles } from "../xtb/merge";
-import type { AccountKind, CashOperation, ChartPoint, ParsedXtbFile } from "../xtb/types";
+import type {
+  AccountBreakdown,
+  AccountKind,
+  CashOperation,
+  ChartPoint,
+  ParsedXtbFile,
+  PortfolioReport,
+} from "../xtb/types";
 import { groupPricesByTicker, priceOnOrBefore, type PricesByTicker } from "./market-value";
 import { findInternalTransferKeys, isExternalTransfer } from "./transfers";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const ACCOUNT_ORDER: AccountKind[] = ["standard", "ike", "ikze"];
 
 export type DailySeriesPoint = {
   /** YYYY-MM-DD */
@@ -26,6 +34,11 @@ export type DailySeriesPoint = {
 export type DailySeriesOptions = {
   /** Jedno konto: każdy transfer to przepływ zewnętrzny. */
   treatTransfersAsExternal?: boolean;
+  /**
+   * Transfery sparowane w obrębie całego zaznaczenia (IKE↔PLN).
+   * Liczone raz dla wszystkich kont, żeby suma nie zawyżała wpłat i wypłat.
+   */
+  internalTransferKeys?: Set<string>;
   /** Ostatni dzień serii (domyślnie: ostatnie dane). */
   until?: Date;
 };
@@ -167,9 +180,9 @@ export function buildDailySeries(
   options: DailySeriesOptions = {},
 ): DailySeriesPoint[] {
   const treatTransfersAsExternal = options.treatTransfersAsExternal ?? false;
-  const internalKeys = treatTransfersAsExternal
-    ? new Set<string>()
-    : findInternalTransferKeys(parsed.cashOperations);
+  const internalKeys =
+    options.internalTransferKeys ??
+    (treatTransfersAsExternal ? new Set<string>() : findInternalTransferKeys(parsed.cashOperations));
 
   const operations = [...parsed.cashOperations].sort(
     (a, b) => a.time.getTime() - b.time.getTime(),
@@ -281,6 +294,14 @@ export function buildDailySeriesPerAccount(
 ): Partial<Record<AccountKind, DailySeriesPoint[]>> {
   const result: Partial<Record<AccountKind, DailySeriesPoint[]>> = {};
 
+  // Parowanie liczymy na całym zaznaczeniu: transfer IKE↔PLN ma obie nogi
+  // tylko wtedy, gdy oba konta są zaznaczone. Inaczej to przepływ zewnętrzny.
+  const selectedOperations = files
+    .filter((file) => kinds.includes(file.accountKind))
+    .flatMap((file) => file.cashOperations);
+  const internalTransferKeys =
+    options.internalTransferKeys ?? findInternalTransferKeys(selectedOperations);
+
   for (const kind of kinds) {
     const forKind = files.filter((file) => file.accountKind === kind);
     if (forKind.length === 0) {
@@ -289,8 +310,7 @@ export function buildDailySeriesPerAccount(
     const merged = mergeParsedFiles(forKind, [kind]);
     result[kind] = buildDailySeries(merged, prices, {
       ...options,
-      // Pojedyncze konto: transfer na inne konto to wypływ z tego konta.
-      treatTransfersAsExternal: true,
+      internalTransferKeys,
     });
   }
 
@@ -381,6 +401,89 @@ export type PortfolioDailySeries = {
   total: DailySeriesPoint[];
   perAccount: Partial<Record<AccountKind, DailySeriesPoint[]>>;
 };
+
+export type SeriesTotals = {
+  portfolioValue: number;
+  netCapital: number;
+  totalProfit: number;
+  totalDeposits: number;
+  totalWithdrawals: number;
+};
+
+/**
+ * Podsumowanie liczone z ostatniego punktu serii — kafelki i wykres
+ * muszą pokazywać tę samą liczbę.
+ */
+export function summarizeDailySeries(series: DailySeriesPoint[]): SeriesTotals | null {
+  const last = series[series.length - 1];
+  if (!last) {
+    return null;
+  }
+
+  let totalDeposits = 0;
+  let totalWithdrawals = 0;
+  for (const point of series) {
+    totalDeposits += point.depositDelta;
+    totalWithdrawals += point.withdrawalDelta;
+  }
+
+  return {
+    portfolioValue: last.portfolioValue,
+    netCapital: last.netCapital,
+    totalProfit: last.totalProfit,
+    totalDeposits,
+    totalWithdrawals,
+  };
+}
+
+/** Nadpisuje w raporcie liczby, które muszą zgadzać się z wykresem. */
+export function syncReportWithSeries(
+  report: PortfolioReport,
+  totals: SeriesTotals | null,
+): PortfolioReport {
+  if (!totals) {
+    return report;
+  }
+
+  return {
+    ...report,
+    portfolioValue: totals.portfolioValue,
+    totalProfit: totals.totalProfit,
+    netDeposits: totals.netCapital,
+    totalDeposits: totals.totalDeposits,
+    totalWithdrawals: totals.totalWithdrawals,
+    unrealizedProfit: totals.totalProfit - report.realizedProfit,
+    totalReturn: totals.totalDeposits > 0 ? totals.totalProfit / totals.totalDeposits : null,
+  };
+}
+
+/** Kafelki „Wartość per konto” z tych samych serii co linie na wykresie. */
+export function accountBreakdownFromSeries(
+  perAccount: Partial<Record<AccountKind, DailySeriesPoint[]>>,
+): AccountBreakdown[] {
+  const breakdown: AccountBreakdown[] = [];
+
+  for (const kind of ACCOUNT_ORDER) {
+    const series = perAccount[kind];
+    if (!series || series.length === 0) {
+      continue;
+    }
+    const totals = summarizeDailySeries(series);
+    if (!totals) {
+      continue;
+    }
+    breakdown.push({
+      kind,
+      portfolioValue: totals.portfolioValue,
+      totalProfit: totals.totalProfit,
+      netDeposits: totals.netCapital,
+      totalDeposits: totals.totalDeposits,
+      totalWithdrawals: totals.totalWithdrawals,
+    });
+  }
+
+  return breakdown;
+}
 
 /**
  * Pełna seria wykresu: per konto oraz suma zaznaczonych kont.

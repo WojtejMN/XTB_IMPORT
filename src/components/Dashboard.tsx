@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { buildPortfolioDailySeries, toChartPoints } from "@/lib/analysis/daily-series";
-import { mergeAssetPriceRows } from "@/lib/analysis/market-value";
 import {
-  analyzeAccountBreakdown,
-  analyzePortfolio,
-} from "@/lib/analysis/portfolio";
+  accountBreakdownFromSeries,
+  buildPortfolioDailySeries,
+  summarizeDailySeries,
+  syncReportWithSeries,
+  toChartPoints,
+} from "@/lib/analysis/daily-series";
+import { mergeAssetPriceRows } from "@/lib/analysis/market-value";
+import { analyzeAccountBreakdown, analyzePortfolio } from "@/lib/analysis/portfolio";
 import { requestAssetPrices, requestPriceSync } from "@/lib/prices/client";
 import type { AssetPriceRow } from "@/lib/prices/supabase";
 import { collectTickerStartDatesFromFiles } from "@/lib/prices/ticker-requests";
@@ -57,7 +60,7 @@ export function Dashboard() {
     () => (imports.length > 0 ? mergeParsedFiles(imports, activeSelection) : null),
     [imports, selectionKey],
   );
-  const report = useMemo(
+  const baseReport = useMemo(
     () =>
       merged
         ? analyzePortfolio(merged, {
@@ -67,11 +70,6 @@ export function Dashboard() {
     [merged, selectionKey],
   );
 
-  const accountBreakdown = useMemo(
-    () => (imports.length > 0 ? analyzeAccountBreakdown(imports, activeSelection) : []),
-    [imports, selectionKey],
-  );
-
   const dailySeries = useMemo(
     () =>
       imports.length > 0
@@ -79,6 +77,23 @@ export function Dashboard() {
         : { total: [], perAccount: {} },
     [imports, selectionKey, assetPrices],
   );
+
+  // Kafelki i wykres muszą czytać z tego samego ostatniego punktu serii.
+  const seriesTotals = useMemo(() => summarizeDailySeries(dailySeries.total), [dailySeries]);
+
+  const report = useMemo(
+    () => (baseReport ? syncReportWithSeries(baseReport, seriesTotals) : null),
+    [baseReport, seriesTotals],
+  );
+
+  const accountBreakdown = useMemo(() => {
+    const fromSeries = accountBreakdownFromSeries(dailySeries.perAccount);
+    return fromSeries.length > 0
+      ? fromSeries
+      : imports.length > 0
+        ? analyzeAccountBreakdown(imports, activeSelection)
+        : [];
+  }, [dailySeries, imports, selectionKey]);
 
   const chartPoints = useMemo(() => toChartPoints(dailySeries.total), [dailySeries]);
 

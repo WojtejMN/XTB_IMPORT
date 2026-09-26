@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountBreakdownFromSeries,
   buildDailySeries,
   buildPortfolioDailySeries,
   sumDailySeries,
+  summarizeDailySeries,
   toChartPoints,
   type DailySeriesPoint,
 } from "./daily-series";
@@ -249,6 +251,134 @@ describe("buildPortfolioDailySeries", () => {
     expect(at(total, "2024-01-03").portfolioValue).toBeCloseTo(1540, 5);
     expect(at(total, "2024-01-03").netCapital).toBeCloseTo(1500, 5);
     expect(at(total, "2024-01-03").totalProfit).toBeCloseTo(40, 5);
+  });
+});
+
+describe("spójność kafelków z wykresem", () => {
+  const standard = file({
+    accountKind: "standard",
+    sourceName: "PLN.xlsx",
+    cashOperations: [
+      cash({ kind: "deposit", time: new Date("2024-01-02T10:00:00Z"), amount: 10_000 }),
+      cash({ kind: "dividend", time: new Date("2024-01-05T10:00:00Z"), amount: 300, symbol: "CDR.PL" }),
+      cash({ kind: "withdrawal", time: new Date("2024-01-08T10:00:00Z"), amount: 2_000 }),
+    ],
+  });
+  const ike = file({
+    accountKind: "ike",
+    sourceName: "IKE.xlsx",
+    cashOperations: [
+      cash({
+        kind: "deposit",
+        time: new Date("2024-01-03T10:00:00Z"),
+        amount: 4_000,
+        accountKind: "ike",
+      }),
+      cash({
+        kind: "dividend",
+        time: new Date("2024-01-06T10:00:00Z"),
+        amount: 120,
+        symbol: "PKN.PL",
+        accountKind: "ike",
+      }),
+    ],
+  });
+
+  it("kafelek sumy zgadza się z ostatnim punktem wykresu", () => {
+    const { total } = buildPortfolioDailySeries([standard, ike], ["standard", "ike"]);
+    const totals = summarizeDailySeries(total)!;
+    const lastPoint = toChartPoints(total).at(-1)!;
+
+    expect(totals.portfolioValue).toBeCloseTo(lastPoint.portfolioValue, 5);
+    expect(totals.netCapital).toBeCloseTo(lastPoint.netCapital, 5);
+    expect(totals.totalProfit).toBeCloseTo(lastPoint.cumulativeGain, 5);
+    expect(totals.totalProfit).toBeCloseTo(totals.portfolioValue - totals.netCapital, 5);
+  });
+
+  it("suma kafelków per konto równa się kafelkowi łącznemu", () => {
+    const { total, perAccount } = buildPortfolioDailySeries([standard, ike], ["standard", "ike"]);
+    const totals = summarizeDailySeries(total)!;
+    const breakdown = accountBreakdownFromSeries(perAccount);
+
+    const valueSum = breakdown.reduce((sum, entry) => sum + entry.portfolioValue, 0);
+    const capitalSum = breakdown.reduce((sum, entry) => sum + entry.netDeposits, 0);
+    const profitSum = breakdown.reduce((sum, entry) => sum + entry.totalProfit, 0);
+
+    expect(valueSum).toBeCloseTo(totals.portfolioValue, 5);
+    expect(capitalSum).toBeCloseTo(totals.netCapital, 5);
+    expect(profitSum).toBeCloseTo(totals.totalProfit, 5);
+    expect(totals.totalProfit).toBeCloseTo(420, 5);
+  });
+
+  it("zysk per konto to wartość minus wpłaty pomniejszone o wypłaty", () => {
+    const { perAccount } = buildPortfolioDailySeries([standard, ike], ["standard", "ike"]);
+    for (const entry of accountBreakdownFromSeries(perAccount)) {
+      expect(entry.netDeposits).toBeCloseTo(entry.totalDeposits - entry.totalWithdrawals, 5);
+      expect(entry.totalProfit).toBeCloseTo(entry.portfolioValue - entry.netDeposits, 5);
+    }
+  });
+
+  it("nie zawyża wpłat o transfer wewnętrzny PLN→IKE", () => {
+    const withTransfer = [
+      file({
+        accountKind: "standard",
+        sourceName: "PLN.xlsx",
+        cashOperations: [
+          cash({ kind: "deposit", time: new Date("2024-01-02T10:00:00Z"), amount: 10_000 }),
+          cash({
+            kind: "transfer",
+            rawType: "IKE deposit",
+            time: new Date("2024-01-04T10:00:00Z"),
+            amount: -500,
+          }),
+        ],
+      }),
+      file({
+        accountKind: "ike",
+        sourceName: "IKE.xlsx",
+        cashOperations: [
+          cash({
+            kind: "transfer",
+            rawType: "IKE deposit",
+            time: new Date("2024-01-04T10:00:00Z"),
+            amount: 500,
+            accountKind: "ike",
+          }),
+        ],
+      }),
+    ];
+
+    const { total } = buildPortfolioDailySeries(withTransfer, ["standard", "ike"]);
+    const totals = summarizeDailySeries(total)!;
+
+    expect(totals.totalDeposits).toBeCloseTo(10_000, 5);
+    expect(totals.totalWithdrawals).toBeCloseTo(0, 5);
+    expect(totals.netCapital).toBeCloseTo(10_000, 5);
+    expect(totals.portfolioValue).toBeCloseTo(10_000, 5);
+    expect(totals.totalProfit).toBeCloseTo(0, 5);
+  });
+
+  it("samo konto IKE traktuje transfer jako przepływ zewnętrzny", () => {
+    const ikeOnly = file({
+      accountKind: "ike",
+      sourceName: "IKE.xlsx",
+      cashOperations: [
+        cash({
+          kind: "transfer",
+          rawType: "IKE deposit",
+          time: new Date("2024-01-04T10:00:00Z"),
+          amount: 500,
+          accountKind: "ike",
+        }),
+      ],
+    });
+
+    const { total } = buildPortfolioDailySeries([ikeOnly], ["ike"]);
+    const totals = summarizeDailySeries(total)!;
+
+    expect(totals.totalDeposits).toBeCloseTo(500, 5);
+    expect(totals.netCapital).toBeCloseTo(500, 5);
+    expect(totals.totalProfit).toBeCloseTo(0, 5);
   });
 });
 
