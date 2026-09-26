@@ -47,11 +47,21 @@ flowchart TD
 
 Trzy tryby widoku:
 
-- **Wartość** (domyślny) — wykres warstwowy: kapitał netto (niebieski) + zysk skumulowany (zielony) = wartość portfela. Kropki: wpłaty (niebieskie), wypłaty (czerwone).
-- **Zysk** — sama linia zysku skumulowanego.
+- **Wartość** (domyślny) — obszar wartości portfela (zielony) i linia kapitału netto (niebieska), z osią zero. Kropki: wpłaty (niebieskie), wypłaty (czerwone).
+- **Zysk** — linia zysku całkowitego (może schodzić poniżej zera).
 - **Przepływy** — słupki wpłat i wypłat.
 
-Kapitał netto na wykresie to `max(0, wpłaty − wypłaty)` — bez ujemnych wartości. Saldo przepływów (może być ujemne) w sekcji szczegółów.
+Seria jest dzienna (`src/lib/analysis/daily-series.ts`), liczona per konto i sumowana dla zaznaczonych kont:
+
+```
+netCapital(t)     = Σ wpłat(≤ t) − Σ wypłat(≤ t)        // może być ujemny
+portfolioValue(t) = gotówka(t) + Σ(ilość(t) × cena(t))  // 0 przy pustym portfelu
+totalProfit(t)    = portfolioValue(t) − netCapital(t)
+```
+
+Suma kont: najpierw sumujemy `portfolioValue` i `netCapital` per dzień, dopiero potem liczymy `totalProfit`.
+Nie ucinamy `netCapital` do zera — ujemna wartość oznacza zysk wyprowadzony na konto bankowe.
+Cena: kurs zamknięcia z `asset_prices` dla GPW, w pozostałych przypadkach koszt zakupu w PLN.
 
 Tryb zaawansowany: agregacja dzień/miesiąc/rok + suwak przybliżenia. Przy wielu kontach: opcjonalne linie per konto.
 

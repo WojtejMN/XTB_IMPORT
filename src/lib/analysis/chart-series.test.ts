@@ -10,15 +10,13 @@ function point(
   withdrawalDelta = 0,
 ): ChartPoint {
   const date = new Date(time);
-  const investedCapital = Math.max(0, netCapital);
-  const cumulativeGain = Math.max(0, portfolioValue - investedCapital);
   return {
     time: date.getTime(),
     label: date.toISOString(),
     netCapital,
     portfolioValue,
-    investedCapital,
-    cumulativeGain,
+    investedCapital: netCapital,
+    cumulativeGain: portfolioValue - netCapital,
     depositDelta,
     withdrawalDelta,
   };

@@ -361,8 +361,7 @@ export function enrichChartWithMarketPrices(
       treatTransfersAsExternal,
     );
     const netCapital = deposits - withdrawals;
-    const investedCapital = Math.max(0, netCapital);
-    const portfolioValue = Math.max(0, cash + holdings);
+    const portfolioValue = cash + holdings;
 
     const day = toIsoDay(time);
     const exact = depositMarkers.get(time);
@@ -384,8 +383,8 @@ export function enrichChartWithMarketPrices(
       label: formatChartLabel(new Date(time)),
       netCapital,
       portfolioValue,
-      investedCapital,
-      cumulativeGain: Math.max(0, portfolioValue - investedCapital),
+      investedCapital: netCapital,
+      cumulativeGain: portfolioValue - netCapital,
       depositDelta,
       withdrawalDelta,
     };

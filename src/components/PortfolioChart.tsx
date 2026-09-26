@@ -10,6 +10,7 @@ import {
   Legend,
   Line,
   ReferenceDot,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -103,9 +104,9 @@ function ChartTooltip({
 
   const labels: Record<string, string> = {
     investedCapital: "Kapitał netto",
-    cumulativeGain: "Zysk skumulowany",
+    cumulativeGain: "Zysk całkowity",
     portfolioValue: "Wartość portfela",
-    netCapital: "Saldo przepływów",
+    netCapital: "Kapitał netto",
     depositDelta: "Wpłata",
     withdrawalDelta: "Wypłata",
     standard: ACCOUNT_LABELS.standard,
@@ -127,8 +128,8 @@ function ChartTooltip({
           <p key={key} className="text-muted" style={{ color: entry.color }}>
             {name}:{" "}
             <span className="font-semibold text-foreground">{formatPln(value)}</span>
-            {key === "netCapital" && value < 0 ? (
-              <span className="ml-1 text-xs">(wypłacono więcej)</span>
+            {(key === "netCapital" || key === "investedCapital") && value < 0 ? (
+              <span className="ml-1 text-xs">(wypłacono więcej niż wpłacono)</span>
             ) : null}
           </p>
         );
@@ -202,10 +203,10 @@ export function PortfolioChart({
   const description =
     dataView === "value"
       ? marketMarked
-        ? "Dzienna wycena MTM: gotówka + akcje GPW × close z bazy/Yahoo."
-        : "Warstwy: kapitał netto (niebieski) + zysk skumulowany (zielony) = wartość portfela."
+        ? "Wartość portfela (gotówka + akcje × kurs zamknięcia) i kapitał netto (wpłaty − wypłaty)."
+        : "Wartość portfela i kapitał netto (wpłaty − wypłaty). Kapitał netto bywa ujemny, gdy wypłacono więcej niż wpłacono."
       : dataView === "profit"
-        ? "Skumulowany zysk w czasie — bez kapitału wpłaconego."
+        ? "Zysk całkowity: wartość portfela − kapitał netto."
         : "Wpłaty i wypłaty jako słupki w poszczególnych okresach.";
 
   return (
@@ -359,9 +360,10 @@ export function PortfolioChart({
               formatter={(value) => {
                 const labels: Record<string, string> = {
                   investedCapital: "Kapitał netto",
-                  cumulativeGain: "Zysk skumulowany",
+                  netCapital: "Kapitał netto",
+                  cumulativeGain: "Zysk całkowity",
                   portfolioValue: "Wartość portfela",
-                  cumulativeGainLine: "Zysk skumulowany",
+                  cumulativeGainLine: "Zysk całkowity",
                   depositDelta: "Wpłaty",
                   withdrawalDelta: "Wypłaty",
                   standard: ACCOUNT_LABELS.standard,
@@ -374,23 +376,21 @@ export function PortfolioChart({
 
             {dataView === "value" ? (
               <>
+                <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="2 2" />
                 <Area
                   type={curveType}
-                  dataKey="investedCapital"
-                  stackId="portfolio"
-                  stroke="#1a6fb5"
-                  fill="#1a6fb5"
+                  dataKey="portfolioValue"
+                  stroke="#0d7a62"
+                  fill="#0d7a62"
                   fillOpacity={0.35}
                   strokeWidth={2}
                 />
-                <Area
+                <Line
                   type={curveType}
-                  dataKey="cumulativeGain"
-                  stackId="portfolio"
-                  stroke="#0d7a62"
-                  fill="#0d7a62"
-                  fillOpacity={0.45}
+                  dataKey="netCapital"
+                  stroke="#1a6fb5"
                   strokeWidth={2}
+                  dot={false}
                 />
                 {overlayAccounts.map((kind) => (
                   <Line
@@ -435,14 +435,17 @@ export function PortfolioChart({
             ) : null}
 
             {dataView === "profit" ? (
-              <Line
-                type={curveType}
-                dataKey="cumulativeGain"
-                name="cumulativeGainLine"
-                stroke="#0d7a62"
-                strokeWidth={2.5}
-                dot={mode === "advanced" && visibleData.length <= 40 ? { r: 2.5 } : false}
-              />
+              <>
+                <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="2 2" />
+                <Line
+                  type={curveType}
+                  dataKey="cumulativeGain"
+                  name="cumulativeGainLine"
+                  stroke="#0d7a62"
+                  strokeWidth={2.5}
+                  dot={mode === "advanced" && visibleData.length <= 40 ? { r: 2.5 } : false}
+                />
+              </>
             ) : null}
 
             {dataView === "flows" ? (
@@ -462,9 +465,11 @@ export function PortfolioChart({
 
       {dataView === "value" ? (
         <p className="mt-3 text-xs text-muted">
+          Zysk całkowity = wartość portfela − kapitał netto. Kapitał netto poniżej zera oznacza, że
+          wypłacono więcej, niż wpłacono.{" "}
           {marketMarked
-            ? "Wykres MTM: wartość = gotówka + Σ(akcje GPW × close). CFD/krypto liczone tylko po zrealizowanym P/L. Instrumenty spoza PLN (np. SXRV.DE) — notowania sync, MTM bez FX na MVP."
-            : "Niebieskie kropki = wpłaty, czerwone = wypłaty. Brak dziennych notowań — tryb awaryjny ze schodkami transakcyjnymi. Po syncu cen GPW wykres przełączy się na MTM."}
+            ? "Akcje GPW wyceniane kursem zamknięcia; pozycje bez notowań — po koszcie."
+            : "Brak dziennych notowań — pozycje wyceniane po koszcie z historii XTB."}
         </p>
       ) : null}
 
