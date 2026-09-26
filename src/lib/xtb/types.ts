@@ -34,6 +34,7 @@ export type ClosedPosition = {
   volume: number | null;
   openTime: Date | null;
   closeTime: Date;
+  openPrice?: number | null;
   commission: number;
   swap: number;
   rollover: number;
@@ -69,13 +70,13 @@ export type ParsedXtbFile = {
 export type ChartPoint = {
   time: number;
   label: string;
-  /** Kumulatywny kapitał netto: wpłaty − wypłaty (może być ujemny). */
+  /** Kumulatywny kapitał netto: wpłaty − wypłaty. Ujemny = wypłacono więcej niż wpłacono. */
   netCapital: number;
-  /** Szacowana wartość portfela. */
+  /** Wartość portfela: gotówka + wycena pozycji. */
   portfolioValue: number;
-  /** Kapitał netto na wykresie: max(0, netCapital). */
+  /** Alias `netCapital` dla serii wykresu — bez ucinania do zera. */
   investedCapital: number;
-  /** Zysk skumulowany: portfolioValue − investedCapital. */
+  /** Zysk całkowity: portfolioValue − netCapital (może być ujemny). */
   cumulativeGain: number;
   /** Wpłata w tym punkcie (0 jeśli brak). */
   depositDelta: number;

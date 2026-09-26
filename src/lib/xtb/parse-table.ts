@@ -140,6 +140,7 @@ function parseTradeRows(
       volume: parseAmount(getCell(row, map, "volume")),
       openTime,
       closeTime: time,
+      openPrice: parseAmount(getCell(row, map, "openPrice")),
       commission,
       swap,
       rollover,

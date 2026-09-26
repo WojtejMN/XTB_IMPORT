@@ -10,6 +10,7 @@ import {
   Legend,
   Line,
   ReferenceDot,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -55,6 +56,35 @@ const ACCOUNT_COLORS: Record<AccountKind, string> = {
   ikze: "#c47d0e",
 };
 
+const ACCOUNT_ORDER: AccountKind[] = ["standard", "ike", "ikze"];
+
+const VALUE_COLOR = "#0d7a62";
+/** Neutralny grafit — niebieski jest już zajęty przez linię portfela zwykłego. */
+const CAPITAL_COLOR = "#475569";
+const DEPOSIT_COLOR = "#1a6fb5";
+const WITHDRAWAL_COLOR = "#c0392b";
+const BASELINE_COLOR = "#94a3b8";
+
+const SERIES_LABELS: Record<string, string> = {
+  portfolioValue: "Wartość portfela",
+  netCapital: "Wpłacony kapitał netto",
+  cumulativeGain: "Zysk / strata całkowita",
+  cumulativeGainLine: "Zysk / strata całkowita",
+  depositDelta: "Wpłaty",
+  withdrawalDelta: "Wypłaty",
+  standard: ACCOUNT_LABELS.standard,
+  ike: ACCOUNT_LABELS.ike,
+  ikze: ACCOUNT_LABELS.ikze,
+};
+
+/** Oś Y musi zejść poniżej zera, gdy kapitał netto jest ujemny. */
+function axisLowerBound(dataMin: number): number {
+  if (!Number.isFinite(dataMin)) {
+    return 0;
+  }
+  return Math.min(0, Math.floor(dataMin * 1.05));
+}
+
 type ChartRow = ChartPoint & Record<string, number | string | Partial<Record<AccountKind, number>> | undefined>;
 
 function mergePerAccountSeries(
@@ -86,6 +116,34 @@ function mergePerAccountSeries(
   });
 }
 
+function TooltipRow({
+  name,
+  value,
+  color,
+  hint,
+  emphasized = false,
+}: {
+  name: string;
+  value: number;
+  color: string;
+  hint?: string;
+  emphasized?: boolean;
+}) {
+  return (
+    <p className="text-muted" style={{ color }}>
+      {name}:{" "}
+      <span
+        className={`font-semibold ${
+          emphasized ? (value < 0 ? "text-negative" : "text-positive") : "text-foreground"
+        }`}
+      >
+        {formatPln(value)}
+      </span>
+      {hint ? <span className="ml-1 text-xs">{hint}</span> : null}
+    </p>
+  );
+}
+
 function ChartTooltip({
   active,
   payload,
@@ -93,7 +151,13 @@ function ChartTooltip({
   dataView,
 }: {
   active?: boolean;
-  payload?: { name?: string; value?: number; color?: string; dataKey?: string }[];
+  payload?: {
+    name?: string;
+    value?: number;
+    color?: string;
+    dataKey?: string;
+    payload?: ChartRow;
+  }[];
   label?: string;
   dataView: DataView;
 }) {
@@ -101,38 +165,66 @@ function ChartTooltip({
     return null;
   }
 
-  const labels: Record<string, string> = {
-    investedCapital: "Kapitał netto",
-    cumulativeGain: "Zysk skumulowany",
-    portfolioValue: "Wartość portfela",
-    netCapital: "Saldo przepływów",
-    depositDelta: "Wpłata",
-    withdrawalDelta: "Wypłata",
-    standard: ACCOUNT_LABELS.standard,
-    ike: ACCOUNT_LABELS.ike,
-    ikze: ACCOUNT_LABELS.ikze,
-  };
+  const row = payload[0]?.payload;
 
   return (
     <div className="rounded-xl border border-border bg-surface px-3 py-2 text-sm shadow-lg">
       <p className="mb-2 font-medium text-foreground">Data: {label}</p>
-      {payload.map((entry) => {
-        const key = String(entry.dataKey ?? entry.name ?? "");
-        const name = labels[key] ?? key;
-        const value = Number(entry.value ?? 0);
-        if (dataView === "flows" && value === 0) {
-          return null;
-        }
-        return (
-          <p key={key} className="text-muted" style={{ color: entry.color }}>
-            {name}:{" "}
-            <span className="font-semibold text-foreground">{formatPln(value)}</span>
-            {key === "netCapital" && value < 0 ? (
-              <span className="ml-1 text-xs">(wypłacono więcej)</span>
-            ) : null}
-          </p>
-        );
-      })}
+
+      {dataView === "value" && row ? (
+        <>
+          <TooltipRow name="Wartość portfela" value={row.portfolioValue} color={VALUE_COLOR} />
+          <TooltipRow
+            name="Kapitał netto (wpłaty − wypłaty)"
+            value={row.netCapital}
+            color={CAPITAL_COLOR}
+            hint={row.netCapital < 0 ? "(wypłacono więcej niż wpłacono)" : undefined}
+          />
+          <TooltipRow
+            name={row.portfolioValue - row.netCapital < 0 ? "Strata całkowita" : "Zysk całkowity"}
+            value={row.portfolioValue - row.netCapital}
+            color={VALUE_COLOR}
+            emphasized
+          />
+          {ACCOUNT_ORDER.map((kind) => {
+            const accountValue = row[`account_${kind}`];
+            if (typeof accountValue !== "number") {
+              return null;
+            }
+            return (
+              <TooltipRow
+                key={kind}
+                name={ACCOUNT_LABELS[kind]}
+                value={accountValue}
+                color={ACCOUNT_COLORS[kind]}
+              />
+            );
+          })}
+        </>
+      ) : null}
+
+      {dataView === "profit" && row ? (
+        <TooltipRow
+          name={row.cumulativeGain < 0 ? "Strata całkowita" : "Zysk całkowity"}
+          value={row.cumulativeGain}
+          color={VALUE_COLOR}
+          emphasized
+        />
+      ) : null}
+
+      {dataView === "flows" && row ? (
+        <>
+          {row.depositDelta > 0 ? (
+            <TooltipRow name="Wpłata" value={row.depositDelta} color={DEPOSIT_COLOR} />
+          ) : null}
+          {row.withdrawalDelta > 0 ? (
+            <TooltipRow name="Wypłata" value={row.withdrawalDelta} color={WITHDRAWAL_COLOR} />
+          ) : null}
+          {row.depositDelta === 0 && row.withdrawalDelta === 0 ? (
+            <p className="text-muted">Brak przepływów w tym okresie.</p>
+          ) : null}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -202,10 +294,10 @@ export function PortfolioChart({
   const description =
     dataView === "value"
       ? marketMarked
-        ? "Dzienna wycena MTM: gotówka + akcje GPW × close z bazy/Yahoo."
-        : "Warstwy: kapitał netto (niebieski) + zysk skumulowany (zielony) = wartość portfela."
+        ? "Wartość portfela (gotówka + akcje × kurs zamknięcia) na tle wpłaconego kapitału netto."
+        : "Wartość portfela na tle wpłaconego kapitału netto (linia przerywana). Serie nie są na sobie układane."
       : dataView === "profit"
-        ? "Skumulowany zysk w czasie — bez kapitału wpłaconego."
+        ? "Zysk / strata całkowita względem zera: wartość portfela − kapitał netto."
         : "Wpłaty i wypłaty jako słupki w poszczególnych okresach.";
 
   return (
@@ -335,6 +427,12 @@ export function PortfolioChart({
             data={visibleData}
             margin={{ top: 8, right: 16, left: 4, bottom: 8 }}
           >
+            <defs>
+              <linearGradient id="portfolioValueFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={VALUE_COLOR} stopOpacity={0.45} />
+                <stop offset="100%" stopColor={VALUE_COLOR} stopOpacity={0.04} />
+              </linearGradient>
+            </defs>
             <CartesianGrid stroke="#d7ebf8" strokeDasharray="3 3" />
             <XAxis
               dataKey="label"
@@ -347,6 +445,7 @@ export function PortfolioChart({
             <YAxis
               width={72}
               tick={{ fill: "#4d6b85", fontSize: 12 }}
+              domain={[axisLowerBound, "auto"]}
               tickFormatter={(value: number) =>
                 new Intl.NumberFormat("pl-PL", {
                   notation: "compact",
@@ -355,42 +454,28 @@ export function PortfolioChart({
               }
             />
             <Tooltip content={<ChartTooltip dataView={dataView} />} />
-            <Legend
-              formatter={(value) => {
-                const labels: Record<string, string> = {
-                  investedCapital: "Kapitał netto",
-                  cumulativeGain: "Zysk skumulowany",
-                  portfolioValue: "Wartość portfela",
-                  cumulativeGainLine: "Zysk skumulowany",
-                  depositDelta: "Wpłaty",
-                  withdrawalDelta: "Wypłaty",
-                  standard: ACCOUNT_LABELS.standard,
-                  ike: ACCOUNT_LABELS.ike,
-                  ikze: ACCOUNT_LABELS.ikze,
-                };
-                return labels[value] ?? value;
-              }}
-            />
+            <Legend formatter={(value) => SERIES_LABELS[value] ?? value} />
+
+            <ReferenceLine y={0} stroke={BASELINE_COLOR} strokeWidth={1.5} />
 
             {dataView === "value" ? (
               <>
                 <Area
                   type={curveType}
-                  dataKey="investedCapital"
-                  stackId="portfolio"
-                  stroke="#1a6fb5"
-                  fill="#1a6fb5"
-                  fillOpacity={0.35}
-                  strokeWidth={2}
+                  dataKey="portfolioValue"
+                  stroke={VALUE_COLOR}
+                  fill="url(#portfolioValueFill)"
+                  strokeWidth={2.5}
+                  dot={false}
+                  activeDot={{ r: 4 }}
                 />
-                <Area
+                <Line
                   type={curveType}
-                  dataKey="cumulativeGain"
-                  stackId="portfolio"
-                  stroke="#0d7a62"
-                  fill="#0d7a62"
-                  fillOpacity={0.45}
+                  dataKey="netCapital"
+                  stroke={CAPITAL_COLOR}
                   strokeWidth={2}
+                  strokeDasharray="4 4"
+                  dot={false}
                 />
                 {overlayAccounts.map((kind) => (
                   <Line
@@ -412,7 +497,7 @@ export function PortfolioChart({
                       x={point.label}
                       y={point.portfolioValue}
                       r={4}
-                      fill="#1a6fb5"
+                      fill={DEPOSIT_COLOR}
                       stroke="#fff"
                       strokeWidth={1.5}
                     />
@@ -425,7 +510,7 @@ export function PortfolioChart({
                       x={point.label}
                       y={point.portfolioValue}
                       r={4}
-                      fill="#c0392b"
+                      fill={WITHDRAWAL_COLOR}
                       stroke="#fff"
                       strokeWidth={1.5}
                     />
@@ -439,7 +524,7 @@ export function PortfolioChart({
                 type={curveType}
                 dataKey="cumulativeGain"
                 name="cumulativeGainLine"
-                stroke="#0d7a62"
+                stroke={VALUE_COLOR}
                 strokeWidth={2.5}
                 dot={mode === "advanced" && visibleData.length <= 40 ? { r: 2.5 } : false}
               />
@@ -447,11 +532,11 @@ export function PortfolioChart({
 
             {dataView === "flows" ? (
               <>
-                <Bar dataKey="depositDelta" name="depositDelta" fill="#1a6fb5" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="depositDelta" name="depositDelta" fill={DEPOSIT_COLOR} radius={[3, 3, 0, 0]} />
                 <Bar
                   dataKey="withdrawalDelta"
                   name="withdrawalDelta"
-                  fill="#c0392b"
+                  fill={WITHDRAWAL_COLOR}
                   radius={[3, 3, 0, 0]}
                 />
               </>
@@ -462,9 +547,11 @@ export function PortfolioChart({
 
       {dataView === "value" ? (
         <p className="mt-3 text-xs text-muted">
+          Odstęp między obszarem a linią przerywaną to zysk lub strata całkowita. Kapitał netto
+          poniżej linii zera oznacza, że wypłacono więcej, niż wpłacono.{" "}
           {marketMarked
-            ? "Wykres MTM: wartość = gotówka + Σ(akcje GPW × close). CFD/krypto liczone tylko po zrealizowanym P/L. Instrumenty spoza PLN (np. SXRV.DE) — notowania sync, MTM bez FX na MVP."
-            : "Niebieskie kropki = wpłaty, czerwone = wypłaty. Brak dziennych notowań — tryb awaryjny ze schodkami transakcyjnymi. Po syncu cen GPW wykres przełączy się na MTM."}
+            ? "Akcje GPW wyceniane kursem zamknięcia; pozycje bez notowań — po koszcie."
+            : "Brak dziennych notowań — pozycje wyceniane po koszcie z historii XTB."}
         </p>
       ) : null}
 
@@ -477,15 +564,15 @@ export function PortfolioChart({
               <Area
                 type={curveType}
                 dataKey="portfolioValue"
-                stroke="#0d7a62"
-                fill="#0d7a62"
+                stroke={VALUE_COLOR}
+                fill={VALUE_COLOR}
                 fillOpacity={0.2}
                 strokeWidth={1}
               />
               <Brush
                 dataKey="label"
                 height={28}
-                stroke="#1a6fb5"
+                stroke={DEPOSIT_COLOR}
                 fill="#e8f4fc"
                 travellerWidth={10}
                 startIndex={startIndex}

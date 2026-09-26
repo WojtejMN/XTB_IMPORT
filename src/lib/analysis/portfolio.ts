@@ -180,15 +180,14 @@ function makeChartPoint(
   depositDelta: number,
   withdrawalDelta: number,
 ): ChartPoint {
-  const investedCapital = Math.max(0, netCapital);
-  const cumulativeGain = Math.max(0, portfolioValue - investedCapital);
   return {
     time,
     label,
     netCapital,
     portfolioValue,
-    investedCapital,
-    cumulativeGain,
+    // Kapitał netto bywa ujemny (wypłacono więcej niż wpłacono) — nie ucinamy go.
+    investedCapital: netCapital,
+    cumulativeGain: portfolioValue - netCapital,
     depositDelta,
     withdrawalDelta,
   };
@@ -211,7 +210,7 @@ function buildChart(events: TimelineEvent[], options: ChartBuildOptions): ChartP
       options.investmentStart,
       options.investmentEnd,
     );
-    return Math.max(0, portfolio) + unrealized;
+    return portfolio + unrealized;
   }
 
   points.push(
@@ -228,10 +227,7 @@ function buildChart(events: TimelineEvent[], options: ChartBuildOptions): ChartP
   for (const event of events) {
     deposits += event.depositDelta;
     withdrawals += event.withdrawalDelta;
-    portfolio += event.depositDelta + event.profitDelta;
-    if (event.withdrawalDelta > 0) {
-      portfolio = Math.max(0, portfolio - event.withdrawalDelta);
-    }
+    portfolio += event.depositDelta + event.profitDelta - event.withdrawalDelta;
 
     const netCapital = deposits - withdrawals;
     const time = event.time.getTime();

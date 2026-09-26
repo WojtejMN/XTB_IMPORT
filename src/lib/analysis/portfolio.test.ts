@@ -131,7 +131,7 @@ expect(report.chart.at(-1)?.netCapital).toBe(22_000);
     expect(standard.totalDeposits).not.toBe(ike.totalDeposits);
   });
 
-  it("nie pokazuje ujemnej wartości portfela po wypłatach przekraczających wpłaty", () => {
+  it("dopuszcza ujemny kapitał netto po wypłatach przekraczających wpłaty", () => {
     const parsed = {
       sourceName: "test.xlsx",
       accountKind: "standard" as const,
@@ -176,8 +176,12 @@ expect(report.chart.at(-1)?.netCapital).toBe(22_000);
     const report = analyzePortfolio(parsed);
     expect(report.netDeposits).toBe(-4000);
     expect(report.chart.some((point) => point.netCapital < 0)).toBe(true);
-    expect(report.chart.slice(0, -1).every((point) => point.portfolioValue >= 0)).toBe(true);
+    expect(report.chart.at(-1)?.netCapital).toBe(-4000);
+    expect(report.chart.at(-1)?.investedCapital).toBe(-4000);
     expect(report.chart.at(-1)?.portfolioValue).toBeCloseTo(report.portfolioValue, 5);
+    for (const point of report.chart) {
+      expect(point.cumulativeGain).toBeCloseTo(point.portfolioValue - point.netCapital, 5);
+    }
   });
 
   it("dolicza zysk z otwartych pozycji i nie dubluje Close trade ani subkont", () => {

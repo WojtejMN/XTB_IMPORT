@@ -2,15 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  enrichChartWithMarketPrices,
-  groupPricesByTicker,
-  mergeAssetPriceRows,
-} from "@/lib/analysis/market-value";
-import {
-  analyzeAccountBreakdown,
-  analyzePerAccountCharts,
-  analyzePortfolio,
-} from "@/lib/analysis/portfolio";
+  accountBreakdownFromSeries,
+  buildPortfolioDailySeries,
+  summarizeDailySeries,
+  syncReportWithSeries,
+  toChartPoints,
+} from "@/lib/analysis/daily-series";
+import { mergeAssetPriceRows } from "@/lib/analysis/market-value";
+import { analyzeAccountBreakdown, analyzePortfolio } from "@/lib/analysis/portfolio";
 import { requestAssetPrices, requestPriceSync } from "@/lib/prices/client";
 import type { AssetPriceRow } from "@/lib/prices/supabase";
 import { collectTickerStartDatesFromFiles } from "@/lib/prices/ticker-requests";
@@ -20,7 +19,7 @@ import { emptyFileNotice, partitionImportedFiles } from "@/lib/xtb/import";
 import { mergeParsedFiles } from "@/lib/xtb/merge";
 import { parseXtbFile } from "@/lib/xtb/parse";
 import { sampleAccounts } from "@/lib/xtb/sample";
-import type { AccountKind, ParsedXtbFile } from "@/lib/xtb/types";
+import type { AccountKind, ChartPoint, ParsedXtbFile } from "@/lib/xtb/types";
 import { AccountBreakdownCards } from "./AccountBreakdownCards";
 import { AccountTabs } from "./AccountTabs";
 import { ExportGuide } from "./ExportGuide";
@@ -61,7 +60,7 @@ export function Dashboard() {
     () => (imports.length > 0 ? mergeParsedFiles(imports, activeSelection) : null),
     [imports, selectionKey],
   );
-  const report = useMemo(
+  const baseReport = useMemo(
     () =>
       merged
         ? analyzePortfolio(merged, {
@@ -71,28 +70,47 @@ export function Dashboard() {
     [merged, selectionKey],
   );
 
-  const accountBreakdown = useMemo(
-    () => (imports.length > 0 ? analyzeAccountBreakdown(imports, activeSelection) : []),
-    [imports, selectionKey],
+  const dailySeries = useMemo(
+    () =>
+      imports.length > 0
+        ? buildPortfolioDailySeries(imports, activeSelection, assetPrices)
+        : { total: [], perAccount: {} },
+    [imports, selectionKey, assetPrices],
   );
 
-  const perAccountCharts = useMemo(
-    () => (imports.length > 0 ? analyzePerAccountCharts(imports, activeSelection) : {}),
-    [imports, selectionKey],
+  // Kafelki i wykres muszą czytać z tego samego ostatniego punktu serii.
+  const seriesTotals = useMemo(() => summarizeDailySeries(dailySeries.total), [dailySeries]);
+
+  const report = useMemo(
+    () => (baseReport ? syncReportWithSeries(baseReport, seriesTotals) : null),
+    [baseReport, seriesTotals],
   );
 
-  const marketChart = useMemo(() => {
-    if (!report || !merged || assetPrices.length === 0) {
-      return null;
+  const accountBreakdown = useMemo(() => {
+    const fromSeries = accountBreakdownFromSeries(dailySeries.perAccount);
+    return fromSeries.length > 0
+      ? fromSeries
+      : imports.length > 0
+        ? analyzeAccountBreakdown(imports, activeSelection)
+        : [];
+  }, [dailySeries, imports, selectionKey]);
+
+  const chartPoints = useMemo(() => toChartPoints(dailySeries.total), [dailySeries]);
+
+  const perAccountCharts = useMemo(() => {
+    const charts: Partial<Record<AccountKind, ChartPoint[]>> = {};
+    for (const [kind, series] of Object.entries(dailySeries.perAccount)) {
+      if (series && series.length > 0) {
+        charts[kind as AccountKind] = toChartPoints(series);
+      }
     }
-    const enriched = enrichChartWithMarketPrices(
-      report.chart,
-      merged,
-      groupPricesByTicker(assetPrices),
-      { treatTransfersAsExternal: activeSelection.length === 1 },
-    );
-    return enriched.usedMarket ? enriched : null;
-  }, [report, merged, assetPrices, selectionKey]);
+    return charts;
+  }, [dailySeries]);
+
+  const pricedTickers = useMemo(
+    () => new Set(assetPrices.map((row) => row.ticker.toUpperCase())).size,
+    [assetPrices],
+  );
 
   useEffect(() => {
     if (available.length === 0) {
@@ -310,7 +328,7 @@ export function Dashboard() {
           {priceSyncNotice ? (
             <p className="rounded-xl border border-border bg-surface px-4 py-3 text-sm text-muted">
               {priceSyncNotice}
-              {marketChart ? ` · wykres: gotówka + MTM (${marketChart.pricedLots} lotów).` : ""}
+              {pricedTickers > 0 ? ` · wykres: gotówka + MTM (${pricedTickers} tickerów).` : ""}
             </p>
           ) : null}
 
@@ -352,12 +370,12 @@ export function Dashboard() {
 
           {activeSelection.length > 0 ? (
             <PortfolioChart
-              key={selectionKey + (marketChart ? "-mtm" : "-cash")}
-              data={marketChart?.chart ?? report.chart}
-              perAccount={marketChart ? undefined : perAccountCharts}
+              key={selectionKey}
+              data={chartPoints.length > 0 ? chartPoints : report.chart}
+              perAccount={perAccountCharts}
               selectedAccounts={activeSelection}
               availableAccounts={available}
-              marketMarked={Boolean(marketChart)}
+              marketMarked={pricedTickers > 0}
               onSelectedAccountsChange={(kinds) => {
                 if (kinds.length === 0) {
                   return;
