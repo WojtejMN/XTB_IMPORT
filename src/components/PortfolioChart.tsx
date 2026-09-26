@@ -59,7 +59,9 @@ const ACCOUNT_COLORS: Record<AccountKind, string> = {
 const ACCOUNT_ORDER: AccountKind[] = ["standard", "ike", "ikze"];
 
 const VALUE_COLOR = "#0d7a62";
-const CAPITAL_COLOR = "#1a6fb5";
+/** Neutralny grafit — niebieski jest już zajęty przez linię portfela zwykłego. */
+const CAPITAL_COLOR = "#475569";
+const DEPOSIT_COLOR = "#1a6fb5";
 const WITHDRAWAL_COLOR = "#c0392b";
 const BASELINE_COLOR = "#94a3b8";
 
@@ -213,7 +215,7 @@ function ChartTooltip({
       {dataView === "flows" && row ? (
         <>
           {row.depositDelta > 0 ? (
-            <TooltipRow name="Wpłata" value={row.depositDelta} color={CAPITAL_COLOR} />
+            <TooltipRow name="Wpłata" value={row.depositDelta} color={DEPOSIT_COLOR} />
           ) : null}
           {row.withdrawalDelta > 0 ? (
             <TooltipRow name="Wypłata" value={row.withdrawalDelta} color={WITHDRAWAL_COLOR} />
@@ -495,7 +497,7 @@ export function PortfolioChart({
                       x={point.label}
                       y={point.portfolioValue}
                       r={4}
-                      fill={CAPITAL_COLOR}
+                      fill={DEPOSIT_COLOR}
                       stroke="#fff"
                       strokeWidth={1.5}
                     />
@@ -530,7 +532,7 @@ export function PortfolioChart({
 
             {dataView === "flows" ? (
               <>
-                <Bar dataKey="depositDelta" name="depositDelta" fill={CAPITAL_COLOR} radius={[3, 3, 0, 0]} />
+                <Bar dataKey="depositDelta" name="depositDelta" fill={DEPOSIT_COLOR} radius={[3, 3, 0, 0]} />
                 <Bar
                   dataKey="withdrawalDelta"
                   name="withdrawalDelta"
@@ -570,7 +572,7 @@ export function PortfolioChart({
               <Brush
                 dataKey="label"
                 height={28}
-                stroke={CAPITAL_COLOR}
+                stroke={DEPOSIT_COLOR}
                 fill="#e8f4fc"
                 travellerWidth={10}
                 startIndex={startIndex}
